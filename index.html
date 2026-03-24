@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Fix & Protect</title>
+    <title>Tile Run - Logic Fix</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -18,7 +18,7 @@
 
 <div class="header">
     <h3 style="margin:0;">Tile Run</h3>
-    <p id="msg">타일을 조합하여 보드에 올리세요.</p>
+    <p id="msg">연속된 숫자(Run) 또는 같은 숫자 다른 색(Group)을 맞추세요.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -39,7 +39,7 @@
     let pool = [];
     let draggingTile = null;
     let offsetX, offsetY;
-    let hasRegistered30 = false; // 30점 룰 통과 여부
+    let hasRegistered30 = false;
 
     const TILE_W = 46, TILE_H = 62;
     const RACK_GRID_X = 54, RACK_GRID_Y = 80;
@@ -62,13 +62,12 @@
         tiles = []; pool = []; hasRegistered30 = false;
         showMessage("게임 시작! 첫 등록은 합계 30점 이상이어야 합니다.");
         
-        // 106장 생성
         for (let s = 0; s < 2; s++) {
             colors.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
         }
-        // 조커 확실히 구분 (컬러/흑백)
-        pool.push({ num: 0, color: '#ff3399', joker: 'color' });
-        pool.push({ num: 0, color: '#555555', joker: 'bw' });
+        // [해결] 조커 색상 명시적 할당
+        pool.push({ num: 0, color: '#ff3399', joker: 'color' }); // 핑크
+        pool.push({ num: 0, color: '#555555', joker: 'bw' });    // 회색
         
         pool.sort(() => Math.random() - 0.5);
         for (let i = 0; i < 14; i++) drawOneTile(true);
@@ -82,21 +81,26 @@
         t.x = t.originRackX = pos.x;
         t.y = t.originRackY = pos.y;
         t.place = 'rack';
-        t.isFixed = false; // 아직 확정되지 않은 상태
+        t.isFixed = false;
         tiles.push(t);
         if(!isInit) { showMessage("타일을 뽑았습니다."); render(); }
     }
 
+    // [해결] 거치대 빈 슬롯 정밀 계산
     function findEmptyRackSlot() {
         const cols = Math.floor((canvas.width - 30) / RACK_GRID_X);
         for (let r = 0; r < RACK_ROWS; r++) {
             for (let c = 0; c < cols; c++) {
                 let tx = 20 + c * RACK_GRID_X;
                 let ty = rackY + r * RACK_GRID_Y;
-                if (!tiles.some(t => t.place === 'rack' && Math.abs(t.x - tx) < 5 && Math.abs(t.y - ty) < 5)) return { x: tx, y: ty };
+                if (!isOccupied(tx, ty)) return { x: tx, y: ty };
             }
         }
         return { x: 20, y: rackY };
+    }
+
+    function isOccupied(x, y, ignoreTile = null) {
+        return tiles.some(t => t !== ignoreTile && Math.abs(t.x - x) < 10 && Math.abs(t.y - y) < 10);
     }
 
     function sortHand() {
@@ -117,19 +121,17 @@
         ctx.fillStyle = "#ffffff";
         ctx.beginPath(); ctx.roundRect(t.x, t.y, TILE_W, TILE_H, r); ctx.fill();
         
-        // 보드에 고정된 타일은 테두리 강조 생략, 드래그나 새로 올린 타일만 강조
         ctx.strokeStyle = isDrag ? "#3498db" : (t.place === 'board' && !t.isFixed ? "#f1c40f" : "#d1d8e0");
-        ctx.lineWidth = isDrag ? 3 : 2;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        // [해결] 조커 색상 렌더링 고정
+        ctx.fillStyle = t.color;
         if (t.joker) {
-            // 조커 색상 로직: 생성 시 지정된 t.color 사용
-            ctx.fillStyle = t.color;
             ctx.font = "bold 28px Arial";
             ctx.fillText("🤡", t.x + TILE_W/2, t.y + TILE_H/2 + 2);
         } else {
-            ctx.fillStyle = t.color;
             ctx.font = `bold ${t.num > 9 ? "22px" : "26px"} Arial`;
             ctx.fillText(t.num, t.x + TILE_W/2, t.y + TILE_H/2 + 2);
         }
@@ -137,10 +139,8 @@
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // 보드 가이드
         ctx.fillStyle = "rgba(255,255,255,0.02)";
         ctx.fillRect(10, BOARD_TOP, canvas.width - 20, rackY - BOARD_TOP - 20);
-        // 거치대 영역
         ctx.fillStyle = "rgba(0,0,0,0.3)";
         for(let i=0; i<RACK_ROWS; i++) {
             ctx.beginPath(); ctx.roundRect(10, rackY + (i * RACK_GRID_Y) - 5, canvas.width - 20, TILE_H + 10, 10); ctx.fill();
@@ -155,7 +155,6 @@
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
-                // 이미 고정된(isFixed) 타일도 일단 드래그는 가능하게 함 (15단계 재조합 준비)
                 draggingTile = t; offsetX = x - t.x; offsetY = y - t.y;
                 tiles.push(tiles.splice(i, 1)[0]); render(); break;
             }
@@ -166,21 +165,34 @@
 
     function onEnd() {
         if (!draggingTile) return;
+        let targetX, targetY, isBoard = false;
+
         if (draggingTile.y < rackY - 20) {
-            // 보드 드롭
-            draggingTile.x = Math.round((draggingTile.x - 10) / BOARD_GRID_X) * BOARD_GRID_X + 10;
-            draggingTile.y = Math.round((draggingTile.y - BOARD_TOP) / BOARD_GRID_Y) * BOARD_GRID_Y + BOARD_TOP;
-            draggingTile.place = 'board';
+            targetX = Math.round((draggingTile.x - 10) / BOARD_GRID_X) * BOARD_GRID_X + 10;
+            targetY = Math.round((draggingTile.y - BOARD_TOP) / BOARD_GRID_Y) * BOARD_GRID_Y + BOARD_TOP;
+            isBoard = true;
         } else {
-            // 거치대 드롭
             let row = Math.max(0, Math.min(Math.round((draggingTile.y - rackY) / RACK_GRID_Y), RACK_ROWS-1));
-            draggingTile.x = Math.round((draggingTile.x - 20) / RACK_GRID_X) * RACK_GRID_X + 20;
-            draggingTile.y = rackY + row * RACK_GRID_Y;
-            draggingTile.place = 'rack';
-            // 거치대로 돌아오면 origin 갱신 (거치대 내 이동 허용)
-            draggingTile.originRackX = draggingTile.x;
-            draggingTile.originRackY = draggingTile.y;
+            targetX = Math.round((draggingTile.x - 20) / RACK_GRID_X) * RACK_GRID_X + 20;
+            targetY = rackY + row * RACK_GRID_Y;
         }
+
+        // [해결] 겹침 방지 로직: 목표 지점에 타일이 있으면 원래 위치로
+        if (isOccupied(targetX, targetY, draggingTile)) {
+            draggingTile.x = draggingTile.originRackX;
+            draggingTile.y = draggingTile.originRackY;
+        } else {
+            draggingTile.x = targetX;
+            draggingTile.y = targetY;
+            if (isBoard) {
+                draggingTile.place = 'board';
+            } else {
+                draggingTile.place = 'rack';
+                draggingTile.originRackX = targetX;
+                draggingTile.originRackY = targetY;
+            }
+        }
+
         draggingTile = null; render();
     }
 
@@ -188,49 +200,50 @@
         const currentBoardTiles = tiles.filter(t => t.place === 'board');
         if (currentBoardTiles.length === 0) return;
 
-        // [핵심] 이번 턴에 새로 낸 타일들만 체크하기 위한 로직 (실제로는 보드 전체 검사)
         const groups = getGroups(currentBoardTiles);
-        if (!groups) { failTurn("모든 타일은 3장 이상 연결되어야 합니다."); return; }
+        if (!groups) { failTurn("모든 타일은 가로로 3장 이상 연결되어야 합니다."); return; }
 
         let turnScore = 0;
         let valid = true;
-        groups.forEach(g => {
+        for (let g of groups) {
             const res = validate(g);
-            if (!res.ok) valid = false;
+            if (!res.ok) { valid = false; break; }
             turnScore += res.score;
-        });
+        }
 
-        if (!valid) { failTurn("규칙에 맞지 않는 조합이 있습니다."); return; }
+        if (!valid) { failTurn("규칙에 어긋나는 조합입니다 (숫자 중복 또는 연속 아님)."); return; }
 
         if (!hasRegistered30) {
-            if (turnScore < 30) { failTurn(`첫 등록은 30점 이상이어야 합니다. (현재 ${turnScore}점)`); return; }
+            if (turnScore < 30) { failTurn(`첫 등록 합계가 30점 미만입니다. (${turnScore}점)`); return; }
             hasRegistered30 = true;
         }
 
-        // 성공: 보드 위 모든 타일을 '고정' 상태로 변경 (보호막)
-        currentBoardTiles.forEach(t => { t.isFixed = true; });
+        currentBoardTiles.forEach(t => { t.isFixed = true; t.originRackX = t.x; t.originRackY = t.y; });
         showMessage("조합 확정 성공!");
         render();
     }
 
     function failTurn(reason) {
         showMessage("❌ " + reason);
-        // [핵심 수정] isFixed가 false인(이번 턴에 새로 낸) 타일만 회수
         tiles.forEach(t => {
             if (t.place === 'board' && !t.isFixed) {
                 t.x = t.originRackX; t.y = t.originRackY; t.place = 'rack';
             }
         });
-        setTimeout(render, 600);
+        setTimeout(render, 800);
     }
 
     function getGroups(boardTiles) {
         boardTiles.sort((a, b) => a.y === b.y ? a.x - b.x : a.y - b.y);
         let groups = [], cur = [];
-        for (let t of boardTiles) {
-            if (cur.length > 0 && (t.y !== cur[0].y || t.x !== cur[cur.length-1].x + BOARD_GRID_X)) {
-                if (cur.length < 3) return null;
-                groups.push(cur); cur = [];
+        for (let i = 0; i < boardTiles.length; i++) {
+            let t = boardTiles[i];
+            if (cur.length > 0) {
+                let last = cur[cur.length-1];
+                if (t.y !== last.y || t.x !== last.x + BOARD_GRID_X) {
+                    if (cur.length < 3) return null;
+                    groups.push(cur); cur = [];
+                }
             }
             cur.push(t);
         }
@@ -238,20 +251,50 @@
         return groups;
     }
 
+    // [해결] 1,2,3,3 방지 - 상세 검증 로직
     function validate(group) {
         const reals = group.filter(t => !t.joker);
         if (reals.length === 0) return { ok: true, score: 30 };
-        const isRun = reals.every(t => t.color === reals[0].color);
-        const isGroup = reals.every(t => t.num === reals[0].num);
+
+        const isSameColor = reals.every(t => t.color === reals[0].color);
+        const isSameNum = reals.every(t => t.num === reals[0].num);
+
         let score = 0;
-        reals.forEach(t => score += t.num);
-        // 조커 점수 추정 (간소화)
-        group.forEach(t => { if(t.joker) score += (reals[0].num || 10); });
-        return { ok: isRun || isGroup, score: score };
+        
+        if (isSameColor) {
+            // [RUN] 연속성 정밀 검사
+            // 조커가 껴있을 수 있으므로 X좌표 차이로 숫자 추론하거나 간단히 정렬 후 비교
+            group.sort((a, b) => a.x - b.x); 
+            for (let i = 0; i < group.length - 1; i++) {
+                let curr = group[i], next = group[i+1];
+                // 조커가 아닐 때만 숫자 비교 (조커는 자동 패스)
+                if (!curr.joker && !next.joker) {
+                    if (next.num !== curr.num + 1) return { ok: false };
+                } else if (curr.joker && !next.joker) {
+                    // 조커 다음 숫자는 최소 2 이상이어야 함
+                    if (next.num < 2) return { ok: false };
+                }
+            }
+            group.forEach(t => score += t.joker ? 10 : t.num); // 조커 점수 임시 10점
+            return { ok: true, score: score };
+        } 
+        
+        if (isSameNum) {
+            // [GROUP] 같은 숫자 다른 색상
+            if (group.length > 4) return { ok: false };
+            const usedColors = new Set();
+            for (let t of reals) {
+                if (usedColors.has(t.color)) return { ok: false }; // 색상 중복 금지
+                usedColors.add(t.color);
+            }
+            group.forEach(t => score += t.joker ? reals[0].num : t.num);
+            return { ok: true, score: score };
+        }
+
+        return { ok: false };
     }
 
     function showMessage(m) { msgArea.innerText = m; }
-
     canvas.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
     resize(); resetGame();
 </script>
