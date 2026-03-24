@@ -3,50 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Clown Joker & Win</title>
+    <title>Tile Run - Draw & Win</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Arial Rounded MT Bold', sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
+        .ui-bottom { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; flex-wrap: wrap; }
         button { 
-            padding: 12px 18px; font-size: 14px; background: #2c3e50; color: white; 
-            border: 2px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer; transition: 0.2s;
+            padding: 12px 15px; font-size: 13px; background: #2c3e50; color: white; 
+            border: 2px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer;
         }
-        button:active { transform: scale(0.95); opacity: 0.8; }
-        .btn-complete { background: #27ae60; border-color: #2ecc71; } /* 초록색으로 변경 */
-        .btn-sort { background: #2980b9; border-color: #3498db; }
+        .btn-complete { background: #27ae60; border-color: #2ecc71; }
+        .btn-draw { background: #8e44ad; border-color: #9b59b6; } /* 보라색 드로우 버튼 */
         .header { position: absolute; top: 15px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
+        .pool-count { position: absolute; top: 50px; right: 20px; color: #f1c40f; font-weight: bold; font-size: 18px; }
         
-        /* 승리 팝업 스타일 */
         #win-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); display: none;
+            background: rgba(0,0,0,0.9); display: none;
             flex-direction: column; justify-content: center; align-items: center;
-            color: #f1c40f; z-index: 1000; text-align: center;
+            color: #f1c40f; z-index: 1000;
         }
-        #win-overlay h1 { font-size: 60px; margin: 0; text-shadow: 0 0 20px #f1c40f; }
-        #win-overlay p { font-size: 20px; color: white; margin: 20px 0 40px; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 승리 판정</h3>
-    <p style="margin:5px; font-size:12px; color:#aaa;">타일을 다 터는 사람이 승리합니다!</p>
+    <h3 style="margin:0;">Tile Run: 드로우 시스템</h3>
 </div>
+<div class="pool-count" id="pool-display">남은 타일: 0</div>
 
 <div id="win-overlay">
-    <h1>VICTORY!</h1>
-    <p>모든 타일을 등록했습니다.</p>
-    <button onclick="drawInitialTiles(); document.getElementById('win-overlay').style.display='none';">새 게임 시작</button>
+    <h1 style="font-size:50px;">🎉 VICTORY! 🎉</h1>
+    <p>모든 타일을 털어냈습니다!</p>
+    <button onclick="drawInitialTiles(); document.getElementById('win-overlay').style.display='none';">다시 하기</button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-bottom">
-    <button onclick="drawInitialTiles()">리셋 (14장)</button>
-    <button class="btn-sort" onclick="sortTiles()">숫자 정렬</button>
-    <button class="btn-complete" onclick="submitRegistration()">조합 등록</button>
+    <button onclick="drawInitialTiles()">리셋</button>
+    <button class="btn-draw" onclick="drawOneTile()">타일 한 장 가져오기</button>
+    <button class="btn-sort" onclick="sortTiles()">정렬</button>
+    <button class="btn-complete" onclick="submitRegistration()">조합 등록 (제거)</button>
 </div>
 
 <script>
@@ -54,12 +52,13 @@
     const ctx = canvas.getContext('2d');
     
     let tiles = [];
+    let pool = []; // 전체 타일 더미
     let draggingTile = null;
     let offsetX, offsetY;
 
     const GRID_SIZE = 65; 
     const TILE_W = 48, TILE_H = 64;
-    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22']; 
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22'];
 
     function resize() {
         canvas.width = window.innerWidth;
@@ -68,37 +67,58 @@
     }
     window.addEventListener('resize', resize);
 
+    // [10단계] 전체 106장 덱 생성 후 14장 배분, 나머지는 pool에 보관
     function drawInitialTiles() {
         tiles = [];
-        let fullDeck = [];
-        for (let i = 0; i < 2; i++) {
-            colors.forEach(color => {
-                for (let n = 1; n <= 13; n++) {
-                    fullDeck.push({ num: n, color: color, joker: null });
-                }
+        pool = [];
+        
+        // 1. 전체 덱 구성 (1~13 각 색상별 2세트 + 조커 2장 = 총 106장)
+        for (let s = 0; s < 2; s++) {
+            colors.forEach(c => {
+                for (let n = 1; n <= 13; n++) { pool.push({ num: n, color: c, joker: null }); }
             });
         }
-        // 조커 2장 (광대 디자인으로 변경)
-        fullDeck.push({ num: 'J', color: 'color', joker: 'color' }); // 컬러 광대
-        fullDeck.push({ num: 'J', color: 'bw', joker: 'bw' });       // 흑백 광대
+        pool.push({ num: 'J', color: 'color', joker: 'color' });
+        pool.push({ num: 'J', color: 'bw', joker: 'bw' });
 
-        fullDeck.sort(() => Math.random() - 0.5);
+        // 2. 셔플
+        pool.sort(() => Math.random() - 0.5);
 
+        // 3. 14장 먼저 뽑기
         const startY = canvas.height - 350; 
         for (let i = 0; i < 14; i++) {
-            let t = fullDeck[i];
+            let t = pool.pop();
             t.x = 30 + (i % 5) * 70;
             t.y = startY + Math.floor(i / 5) * 85;
             tiles.push(t);
         }
+        updatePoolDisplay();
         render();
     }
 
+    // [10단계] 타일 한 장 가져오기 기능
+    function drawOneTile() {
+        if (pool.length === 0) { alert("더미에 타일이 없습니다!"); return; }
+        
+        let t = pool.pop();
+        // 화면 중앙 적당한 곳에 생성
+        t.x = canvas.width / 2 - TILE_W / 2;
+        t.y = canvas.height / 2 - TILE_H / 2;
+        
+        tiles.push(t);
+        updatePoolDisplay();
+        render();
+    }
+
+    function updatePoolDisplay() {
+        document.getElementById('pool-display').innerText = `남은 타일: ${pool.length}`;
+    }
+
+    // 정렬 로직
     function sortTiles() {
         tiles.sort((a, b) => {
             if (a.joker && !b.joker) return 1;
             if (!a.joker && b.joker) return -1;
-            if (a.joker && b.joker) return 0;
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
@@ -110,64 +130,47 @@
         render();
     }
 
-    // [9단계 핵심] 조합 등록 및 승리 판정
+    // 등록 로직 (성공 시 타일 제거)
     function submitRegistration() {
         const groups = findGroups();
-        if (groups.length === 0) { alert("가로로 3장 이상 붙여주세요!"); return; }
+        if (groups.length === 0) { alert("3장 이상 붙여주세요!"); return; }
         
         let removedIds = new Set();
-        let successCount = 0;
+        let success = false;
 
-        groups.forEach((group) => {
-            const result = validateGroupWithJoker(group);
-            if (result) {
-                // 성공한 조합의 타일 ID를 수집 (타일에 ID가 없으므로 x,y좌표로 식별)
+        groups.forEach(group => {
+            if (validateGroupWithJoker(group)) {
                 group.forEach(t => removedIds.add(`${t.x},${t.y}`));
-                successCount++;
+                success = true;
             }
         });
 
-        if (successCount === 0) {
-            alert("규칙에 맞는 조합이 하나도 없습니다.");
-            return;
-        }
+        if (!success) { alert("맞는 조합이 없습니다."); return; }
 
-        // 성공한 타일들만 핸드에서 제거
         tiles = tiles.filter(t => !removedIds.has(`${t.x},${t.y}`));
-        alert(`${successCount}개의 조합이 등록되었습니다!`);
-        
         render();
 
-        // 승리 판정
         if (tiles.length === 0) {
             document.getElementById('win-overlay').style.display = 'flex';
         }
     }
 
-    // 규칙 판정 로직 (기존과 동일)
+    // --- 이하 그리기 및 규칙 판정 로직 (광대 조커 포함) ---
+
     function findGroups() {
-        const foundGroups = [];
-        const visited = new Set();
+        const foundGroups = []; const visited = new Set();
         const sortedTiles = [...tiles].sort((a, b) => a.y - b.y || a.x - b.x);
         for (let i = 0; i < sortedTiles.length; i++) {
             if (visited.has(i)) continue;
-            let group = [sortedTiles[i]];
-            visited.add(i);
-            let current = sortedTiles[i];
-            let foundNext = true;
+            let group = [sortedTiles[i]]; visited.add(i);
+            let current = sortedTiles[i]; let foundNext = true;
             while (foundNext) {
                 foundNext = false;
                 for (let j = 0; j < sortedTiles.length; j++) {
                     if (visited.has(j)) continue;
                     const dx = Math.abs(current.x + GRID_SIZE - sortedTiles[j].x);
                     const dy = Math.abs(current.y - sortedTiles[j].y);
-                    if (dx < 25 && dy < 15) {
-                        group.push(sortedTiles[j]);
-                        visited.add(j);
-                        current = sortedTiles[j];
-                        foundNext = true;
-                        break;
-                    }
+                    if (dx < 25 && dy < 15) { group.push(sortedTiles[j]); visited.add(j); current = sortedTiles[j]; foundNext = true; break; }
                 }
             }
             if (group.length >= 3) foundGroups.push(group);
@@ -183,54 +186,23 @@
             if (sameColor) {
                 const nums = normalTiles.map(t => t.num).sort((a, b) => a - b);
                 let neededJokers = 0;
-                for (let i = 1; i < nums.length; i++) {
-                    neededJokers += nums[i] - nums[i - 1] - 1;
-                }
+                for (let i = 1; i < nums.length; i++) neededJokers += nums[i] - nums[i - 1] - 1;
                 if (neededJokers <= jokerCount) return "RUN";
             }
-        } else if (jokerCount >= 3) return "RUN";
-        if (normalTiles.length > 0) {
             const sameNum = normalTiles.every(t => t.num === normalTiles[0].num);
-            const cols = normalTiles.map(t => t.color);
-            const diffCols = new Set(cols).size === cols.length;
+            const diffCols = new Set(normalTiles.map(t => t.color)).size === normalTiles.length;
             if (sameNum && diffCols && group.length <= 4) return "GROUP";
-        } else if (jokerCount >= 3) return "GROUP";
+        } else if (jokerCount >= 3) return "RUN";
         return null;
     }
 
-    // [9단계 수정] 스마일 대신 미스터리한 광대 고스트 디자인
     function drawClownJoker(ctx, x, y, w, h, type) {
-        ctx.save();
-        ctx.translate(x + w / 2, y + h / 2);
-        
-        // 광대 얼굴 실루엣 (조금 더 뾰족하고 미스터리하게)
+        ctx.save(); ctx.translate(x + w / 2, y + h / 2);
         ctx.fillStyle = type === 'color' ? "#2c3e50" : "#555";
-        ctx.beginPath();
-        ctx.moveTo(0, -18); // 위쪽 뾰족
-        ctx.lineTo(12, -8); ctx.lineTo(15, 5); ctx.lineTo(0, 18); // 아래쪽 뾰족
-        ctx.lineTo(-15, 5); ctx.lineTo(-12, -8);
-        ctx.closePath();
-        ctx.fill();
-
-        // 눈 (미스터리한 점)
-        ctx.fillStyle = type === 'color' ? "#f1c40f" : "#aaa"; // 컬러는 노랑, 흑백은 연회색
-        ctx.beginPath(); ctx.arc(-6, -3, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(6, -3, 2.5, 0, Math.PI * 2); ctx.fill();
-
-        // 뾰족한 입 (입술 모양)
-        ctx.strokeStyle = type === 'color' ? "#e74c3c" : "#aaa";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-10, 5);
-        ctx.quadraticCurveTo(0, 15, 10, 5); // 아래로 뾰족한 입
-        ctx.stroke();
-        
-        // 광대 모자 방울 효과 (컬러 조커만)
-        if (type === 'color') {
-            ctx.fillStyle = "#3498db"; ctx.beginPath(); ctx.arc(-15, -12, 4, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "#27ae60"; ctx.beginPath(); ctx.arc(15, -12, 4, 0, Math.PI * 2); ctx.fill();
-        }
-        
+        ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(12, -8); ctx.lineTo(15, 5); ctx.lineTo(0, 18); ctx.lineTo(-15, 5); ctx.lineTo(-12, -8); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = type === 'color' ? "#f1c40f" : "#aaa";
+        ctx.beginPath(); ctx.arc(-6, -3, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(6, -3, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = type === 'color' ? "#e74c3c" : "#aaa"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-10, 5); ctx.quadraticCurveTo(0, 15, 10, 5); ctx.stroke();
         ctx.restore();
     }
 
@@ -243,16 +215,13 @@
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
         for (let x = 0; x <= canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
         for (let y = 0; y <= canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
-
         tiles.forEach(tile => {
             drawHexTile(ctx, tile.x, tile.y, TILE_W, TILE_H, draggingTile === tile);
-            if (tile.joker) {
-                // [수정] 새로운 광대 고스트 디자인 적용
-                drawClownJoker(ctx, tile.x, tile.y, TILE_W, TILE_H, tile.joker);
-            } else {
+            if (tile.joker) drawClownJoker(ctx, tile.x, tile.y, TILE_W, TILE_H, tile.joker);
+            else {
                 ctx.fillStyle = tile.color; ctx.font = "bold 26px Arial Rounded MT Bold"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
                 ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
             }
@@ -262,7 +231,7 @@
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        if (y > canvas.height - 100) return;
+        if (y > canvas.height - 120) return;
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
