@@ -3,35 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - 3D Hex</title>
+    <title>Tile Run - Official 14</title>
     <style>
-        body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Arial Rounded MT Bold', 'Helvetica Round', sans-serif; overflow: hidden; }
+        body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Arial Rounded MT Bold', sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 15px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; flex-wrap: wrap; }
+        .ui-bottom { position: absolute; bottom: 15px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
         button { 
-            padding: 10px 15px; font-size: 14px; background: #2c3e50; color: white; 
-            border: 2px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer; transition: background 0.2s;
+            padding: 12px 20px; font-size: 14px; background: #2c3e50; color: white; 
+            border: 2px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer;
         }
-        button:active { background: #34495e; }
         .btn-check { background: #e67e22; border-color: #d35400; }
-        .btn-check:active { background: #d35400; }
         .btn-sort { background: #2980b9; border-color: #3498db; }
-        .btn-sort:active { background: #3498db; }
-        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; text-shadow: 1px 1px 3px rgba(0,0,0,0.5); }
+        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: Step 7 3D Hex</h3>
-    <p style="margin:5px; font-size:12px; color:#ddd;">대각선 아래 입체감 Hex 타일 적용</p>
+    <h3 style="margin:0;">Tile Run: 정식 14장 모드</h3>
+    <p style="margin:5px; font-size:12px; color:#ddd;">대각선 입체 타일 적용 완료</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-bottom">
-    <button onclick="drawInitialTiles()">리셋 (42장)</button>
-    <button class="btn-sort" onclick="sortTiles()">색상 정렬</button>
+    <button onclick="drawInitialTiles()">타일 리셋 (14장)</button>
+    <button class="btn-sort" onclick="sortTiles()">숫자 정렬</button>
     <button class="btn-check" onclick="checkBoardRules()">조합 확인</button>
 </div>
 
@@ -43,8 +40,8 @@
     let draggingTile = null;
     let offsetX, offsetY;
 
-    const GRID_SIZE = 55; 
-    const TILE_W = 46, TILE_H = 60;
+    const GRID_SIZE = 60; 
+    const TILE_W = 48, TILE_H = 64;
     const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22']; 
 
     function resize() {
@@ -54,13 +51,14 @@
     }
     window.addEventListener('resize', resize);
 
+    // [수정] 다시 원래대로 14장만 생성
     function drawInitialTiles() {
         tiles = [];
-        const startY = 80;
-        for (let i = 0; i < 42; i++) {
+        const startY = canvas.height - 200; 
+        for (let i = 0; i < 14; i++) {
             tiles.push({
-                x: 15 + (i % 6) * 62,
-                y: startY + Math.floor(i / 6) * 75,
+                x: 20 + (i % 5) * 65,
+                y: startY + Math.floor(i / 5) * 80,
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -73,26 +71,21 @@
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
-        const startY = 80;
+        const startY = canvas.height - 200;
         tiles.forEach((t, i) => {
-            t.x = 15 + (i % 6) * 62;
-            t.y = startY + Math.floor(i / 6) * 75;
+            t.x = 20 + (i % 5) * 65;
+            t.y = startY + Math.floor(i / 5) * 80;
         });
         render();
     }
 
-    // 규칙 검증 엔진 (기존과 동일)
     function checkBoardRules() {
         const groups = findGroups();
         if (groups.length === 0) { alert("가로로 3장 이상 붙여주세요!"); return; }
         let msg = "";
         groups.forEach((group, i) => {
             const result = validateGroup(group);
-            if (result) {
-                msg += `조합 ${i+1}: ${result === "RUN" ? "연속 성공! ✅" : "그룹 성공! ✅"}\n`;
-            } else {
-                msg += `조합 ${i+1}: 규칙 위반 ❌ (숫자/색상 중복 체크)\n`;
-            }
+            msg += `조합 ${i+1}: ${result ? (result === "RUN" ? "연속 성공! ✅" : "그룹 성공! ✅") : "규칙 위반 ❌"}\n`;
         });
         alert(msg);
     }
@@ -112,9 +105,9 @@
                 foundNext = false;
                 for (let j = 0; j < sortedTiles.length; j++) {
                     if (visited.has(j)) continue;
-                    const dx = Math.abs(current.x + GRID_SIZE - sortedTiles[j].x);
+                    const dx = Math.abs(current.x + (GRID_SIZE-5) - sortedTiles[j].x);
                     const dy = Math.abs(current.y - sortedTiles[j].y);
-                    if (dx < 18 && dy < 12) {
+                    if (dx < 20 && dy < 15) {
                         group.push(sortedTiles[j]);
                         visited.add(j);
                         current = sortedTiles[j];
@@ -134,20 +127,91 @@
         const nums = group.map(t => t.num);
         const isSeq = nums.every((n, i) => i === 0 || n === nums[i-1] + 1);
         if (sameColor && isSeq) return "RUN";
+
         const sameNum = group.every(t => t.num === group[0].num);
         const diffCols = new Set(group.map(t => t.color)).size === group.length;
         if (sameNum && diffCols && group.length <= 4) return "GROUP";
         return null;
     }
 
-    // [입체 육각형 타일 그리기 함수 수정]
+    // [수정] 대각선 아래(오른쪽+아래) 입체 그리기
     function drawHexTile(ctx, x, y, w, h, isDragging) {
-        const r = 8; // 둥글기
-        const depth = 5; // 입체 두께
+        const r = 8; 
+        const d = 5; // 두께(depth)
 
-        // 1. 대각선 아래 입체 두께 부분 그리기 (어두운 회색)
+        // 1. 대각선 그림자/두께 (오른쪽 아래로 5px씩 이동)
         ctx.fillStyle = "#bdc3c7"; 
         ctx.beginPath();
-        // 왼쪽 위 모서리에서 시작해서 시계방향으로 육각형 모양 그리기 (대각선 아래로 이동)
-        ctx.moveTo(x + r + depth, y + depth);
-        ctx.lineTo
+        ctx.roundRect(x + d, y + d, w, h, r);
+        ctx.fill();
+
+        // 2. 타일 윗면
+        ctx.fillStyle = "#ecf0f1"; 
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.fill();
+
+        // 테두리
+        ctx.strokeStyle = isDragging ? "#3498db" : "#95a5a6";
+        ctx.lineWidth = isDragging ? 3 : 1;
+        ctx.stroke();
+    }
+
+    function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "rgba(255,255,255,0.03)";
+        for (let x = 0; x <= canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+        for (let y = 0; y <= canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+        tiles.forEach(tile => {
+            drawHexTile(ctx, tile.x, tile.y, TILE_W, TILE_H, draggingTile === tile);
+            ctx.fillStyle = tile.color;
+            ctx.font = "bold 26px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
+        });
+    }
+
+    function onStart(e) {
+        const ev = e.touches ? e.touches[0] : e;
+        const x = ev.clientX, y = ev.clientY;
+        if (y > canvas.height - 70) return;
+        for (let i = tiles.length - 1; i >= 0; i--) {
+            const t = tiles[i];
+            if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
+                draggingTile = t;
+                offsetX = x - t.x; offsetY = y - t.y;
+                tiles.push(tiles.splice(i, 1)[0]);
+                break;
+            }
+        }
+    }
+    function onMove(e) {
+        if (!draggingTile) return;
+        const ev = e.touches ? e.touches[0] : e;
+        draggingTile.x = ev.clientX - offsetX;
+        draggingTile.y = ev.clientY - offsetY;
+        render();
+    }
+    function onEnd() {
+        if (draggingTile) {
+            draggingTile.x = Math.round(draggingTile.x / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_W) / 2;
+            draggingTile.y = Math.round(draggingTile.y / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_H) / 2;
+        }
+        draggingTile = null;
+        render();
+    }
+
+    canvas.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    canvas.addEventListener('touchstart', onStart, {passive: false});
+    window.addEventListener('touchmove', onMove, {passive: false});
+    window.addEventListener('touchend', onEnd);
+
+    resize();
+    drawInitialTiles();
+</script>
+</body>
+</html>
