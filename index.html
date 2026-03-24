@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Logic Fix</title>
+    <title>Tile Run - Final Fix</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -18,7 +18,7 @@
 
 <div class="header">
     <h3 style="margin:0;">Tile Run</h3>
-    <p id="msg">연속된 숫자(Run) 또는 같은 숫자 다른 색(Group)을 맞추세요.</p>
+    <p id="msg">연속된 숫자(Run) 혹은 같은 숫자 다른 색(Group)을 맞추세요.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -65,9 +65,9 @@
         for (let s = 0; s < 2; s++) {
             colors.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
         }
-        // [해결] 조커 색상 명시적 할당
-        pool.push({ num: 0, color: '#ff3399', joker: 'color' }); // 핑크
-        pool.push({ num: 0, color: '#555555', joker: 'bw' });    // 회색
+        // 조커 색상 강제 지정
+        pool.push({ num: 0, color: '#ff3399', joker: 'color' }); // 컬러 조커 (핑크)
+        pool.push({ num: 0, color: '#555555', joker: 'bw' });    // 흑백 조커 (회색)
         
         pool.sort(() => Math.random() - 0.5);
         for (let i = 0; i < 14; i++) drawOneTile(true);
@@ -86,7 +86,6 @@
         if(!isInit) { showMessage("타일을 뽑았습니다."); render(); }
     }
 
-    // [해결] 거치대 빈 슬롯 정밀 계산
     function findEmptyRackSlot() {
         const cols = Math.floor((canvas.width - 30) / RACK_GRID_X);
         for (let r = 0; r < RACK_ROWS; r++) {
@@ -100,12 +99,15 @@
     }
 
     function isOccupied(x, y, ignoreTile = null) {
-        return tiles.some(t => t !== ignoreTile && Math.abs(t.x - x) < 10 && Math.abs(t.y - y) < 10);
+        return tiles.some(t => t !== ignoreTile && Math.abs(t.x - x) < 20 && Math.abs(t.y - y) < 20);
     }
 
     function sortHand() {
         let rackTiles = tiles.filter(t => t.place === 'rack');
-        rackTiles.sort((a, b) => a.color !== b.color ? colors.indexOf(a.color) - colors.indexOf(b.color) : a.num - b.num);
+        rackTiles.sort((a, b) => {
+            if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
+            return a.num - b.num;
+        });
         const cols = Math.floor((canvas.width - 30) / RACK_GRID_X);
         rackTiles.forEach((t, i) => {
             t.x = t.originRackX = 20 + (i % cols) * RACK_GRID_X;
@@ -126,8 +128,7 @@
         ctx.stroke();
 
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        // [해결] 조커 색상 렌더링 고정
-        ctx.fillStyle = t.color;
+        ctx.fillStyle = t.color; // 객체에 담긴 고유 색상 사용
         if (t.joker) {
             ctx.font = "bold 28px Arial";
             ctx.fillText("🤡", t.x + TILE_W/2, t.y + TILE_H/2 + 2);
@@ -177,7 +178,7 @@
             targetY = rackY + row * RACK_GRID_Y;
         }
 
-        // [해결] 겹침 방지 로직: 목표 지점에 타일이 있으면 원래 위치로
+        // 겹침 방지: 목표 자리가 차있으면 원래 자리로
         if (isOccupied(targetX, targetY, draggingTile)) {
             draggingTile.x = draggingTile.originRackX;
             draggingTile.y = draggingTile.originRackY;
@@ -192,35 +193,36 @@
                 draggingTile.originRackY = targetY;
             }
         }
-
         draggingTile = null; render();
     }
 
     function finishTurn() {
         const currentBoardTiles = tiles.filter(t => t.place === 'board');
-        if (currentBoardTiles.length === 0) return;
-
         const groups = getGroups(currentBoardTiles);
-        if (!groups) { failTurn("모든 타일은 가로로 3장 이상 연결되어야 합니다."); return; }
-
-        let turnScore = 0;
-        let valid = true;
-        for (let g of groups) {
-            const res = validate(g);
-            if (!res.ok) { valid = false; break; }
-            turnScore += res.score;
+        
+        if (!groups && currentBoardTiles.length > 0) { 
+            failTurn("조합이 완성되지 않았습니다 (3장 이상 연결 필수)."); return; 
         }
 
-        if (!valid) { failTurn("규칙에 어긋나는 조합입니다 (숫자 중복 또는 연속 아님)."); return; }
+        let totalScore = 0;
+        let allOk = true;
+        if(groups) {
+            for (let g of groups) {
+                const res = validate(g);
+                if (!res.ok) { allOk = false; break; }
+                totalScore += res.score;
+            }
+        }
 
-        if (!hasRegistered30) {
-            if (turnScore < 30) { failTurn(`첫 등록 합계가 30점 미만입니다. (${turnScore}점)`); return; }
+        if (!allOk) { failTurn("잘못된 조합입니다 (숫자 연속성 또는 색상 중복 확인)."); return; }
+
+        if (!hasRegistered30 && currentBoardTiles.length > 0) {
+            if (totalScore < 30) { failTurn(`첫 등록은 30점 이상이어야 합니다. (현재 ${totalScore}점)`); return; }
             hasRegistered30 = true;
         }
 
         currentBoardTiles.forEach(t => { t.isFixed = true; t.originRackX = t.x; t.originRackY = t.y; });
-        showMessage("조합 확정 성공!");
-        render();
+        showMessage("등록 성공!"); render();
     }
 
     function failTurn(reason) {
@@ -234,6 +236,7 @@
     }
 
     function getGroups(boardTiles) {
+        if (boardTiles.length === 0) return null;
         boardTiles.sort((a, b) => a.y === b.y ? a.x - b.x : a.y - b.y);
         let groups = [], cur = [];
         for (let i = 0; i < boardTiles.length; i++) {
@@ -248,49 +251,33 @@
             cur.push(t);
         }
         if (cur.length > 0) { if (cur.length < 3) return null; groups.push(cur); }
-        return groups;
+        return groups.length > 0 ? groups : null;
     }
 
-    // [해결] 1,2,3,3 방지 - 상세 검증 로직
     function validate(group) {
+        group.sort((a, b) => a.x - b.x);
         const reals = group.filter(t => !t.joker);
-        if (reals.length === 0) return { ok: true, score: 30 };
-
         const isSameColor = reals.every(t => t.color === reals[0].color);
         const isSameNum = reals.every(t => t.num === reals[0].num);
 
-        let score = 0;
-        
         if (isSameColor) {
-            // [RUN] 연속성 정밀 검사
-            // 조커가 껴있을 수 있으므로 X좌표 차이로 숫자 추론하거나 간단히 정렬 후 비교
-            group.sort((a, b) => a.x - b.x); 
+            // [RUN] 숫자 연속성 체크
             for (let i = 0; i < group.length - 1; i++) {
                 let curr = group[i], next = group[i+1];
-                // 조커가 아닐 때만 숫자 비교 (조커는 자동 패스)
-                if (!curr.joker && !next.joker) {
-                    if (next.num !== curr.num + 1) return { ok: false };
-                } else if (curr.joker && !next.joker) {
-                    // 조커 다음 숫자는 최소 2 이상이어야 함
-                    if (next.num < 2) return { ok: false };
-                }
+                if (!curr.joker && !next.joker && next.num !== curr.num + 1) return { ok: false };
+                // 조커 논리는 15단계에서 더 정교화 예정
             }
-            group.forEach(t => score += t.joker ? 10 : t.num); // 조커 점수 임시 10점
-            return { ok: true, score: score };
+            let s = 0; group.forEach(t => s += t.joker ? 10 : t.num);
+            return { ok: true, score: s };
         } 
-        
         if (isSameNum) {
             // [GROUP] 같은 숫자 다른 색상
             if (group.length > 4) return { ok: false };
-            const usedColors = new Set();
-            for (let t of reals) {
-                if (usedColors.has(t.color)) return { ok: false }; // 색상 중복 금지
-                usedColors.add(t.color);
-            }
-            group.forEach(t => score += t.joker ? reals[0].num : t.num);
-            return { ok: true, score: score };
+            const u = new Set();
+            for (let t of reals) { if (u.has(t.color)) return { ok: false }; u.add(t.color); }
+            let s = 0; group.forEach(t => s += t.joker ? reals[0].num : t.num);
+            return { ok: true, score: s };
         }
-
         return { ok: false };
     }
 
