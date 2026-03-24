@@ -3,25 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Final Step 7</title>
+    <title>Tile Run - Premium</title>
     <style>
-        body { margin: 0; background: #000; touch-action: none; font-family: sans-serif; overflow: hidden; }
+        /* 배경을 고급스러운 어두운 톤으로 변경 */
+        body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Arial Rounded MT Bold', 'Helvetica Round', sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 10px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; }
+        .ui-bottom { position: absolute; bottom: 15px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; flex-wrap: wrap; }
         button { 
-            padding: 10px 12px; font-size: 13px; background: #333; color: white; 
-            border: 2px solid #555; border-radius: 8px; font-weight: bold; cursor: pointer;
+            padding: 10px 15px; font-size: 14px; background: #2c3e50; color: white; 
+            border: 2px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer; transition: background 0.2s;
         }
+        button:active { background: #34495e; }
         .btn-check { background: #e67e22; border-color: #d35400; }
+        .btn-check:active { background: #d35400; }
         .btn-sort { background: #2980b9; border-color: #3498db; }
-        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
+        .btn-sort:active { background: #3498db; }
+        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; text-shadow: 1px 1px 3px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: Step 7 Final</h3>
-    <p style="margin:5px; font-size:11px; color:#aaa;">타일 입체감 추가 및 중복 숫자 규칙 반영</p>
+    <h3 style="margin:0;">Tile Run: Step 7 Premium</h3>
+    <p style="margin:5px; font-size:12px; color:#ddd;">육각형 타일 및 정밀 규칙 엔진 적용</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -41,9 +45,10 @@
     let offsetX, offsetY;
 
     const GRID_SIZE = 55; 
-    // 타일 크기를 살짝 줄임 (46x60 -> 44x58)
-    const TILE_W = 44, TILE_H = 58;
-    const colors = ['#FF3B30', '#FFCC00', '#007AFF', '#FF9500']; 
+    // 육각형 모양에 맞춰 타일 크기 미세 조정
+    const TILE_W = 46, TILE_H = 60;
+    // 눈이 편안한 파스텔 톤 색상으로 변경
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22']; // 빨, 노, 파, 주
 
     function resize() {
         canvas.width = window.innerWidth;
@@ -54,11 +59,11 @@
 
     function drawInitialTiles() {
         tiles = [];
-        const startY = 60; 
+        const startY = 80; // 위쪽 여백 확보
         for (let i = 0; i < 42; i++) {
             tiles.push({
-                x: 10 + (i % 6) * 60,
-                y: startY + Math.floor(i / 6) * 78, // 줄 간격을 더 넓힘 (75 -> 78)
+                x: 15 + (i % 6) * 62,
+                y: startY + Math.floor(i / 6) * 75, // 줄 간격 넓힘
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -71,10 +76,10 @@
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
-        const startY = 60; 
+        const startY = 80;
         tiles.forEach((t, i) => {
-            t.x = 10 + (i % 6) * 60;
-            t.y = startY + Math.floor(i / 6) * 78;
+            t.x = 15 + (i % 6) * 62;
+            t.y = startY + Math.floor(i / 6) * 75;
         });
         render();
     }
@@ -85,7 +90,11 @@
         let msg = "";
         groups.forEach((group, i) => {
             const result = validateGroup(group);
-            msg += `조합 ${i+1}: ${result ? (result === "RUN" ? "연속 성공! ✅" : "그룹 성공! ✅") : "규칙 위반 ❌"}\n`;
+            if (result) {
+                msg += `조합 ${i+1}: ${result === "RUN" ? "연속 성공! ✅" : "그룹 성공! ✅"}\n`;
+            } else {
+                msg += `조합 ${i+1}: 규칙 위반 ❌ (숫자/색상 중복 체크)\n`;
+            }
         });
         alert(msg);
     }
@@ -107,7 +116,7 @@
                     if (visited.has(j)) continue;
                     const dx = Math.abs(current.x + GRID_SIZE - sortedTiles[j].x);
                     const dy = Math.abs(current.y - sortedTiles[j].y);
-                    if (dx < 15 && dy < 10) {
+                    if (dx < 18 && dy < 12) { // 판정 범위 살짝 넓힘
                         group.push(sortedTiles[j]);
                         visited.add(j);
                         current = sortedTiles[j];
@@ -121,73 +130,100 @@
         return foundGroups;
     }
 
-    // [핵심 수정] 중복 숫자 판정 로직 추가
+    // [핵심] 정밀 규칙 판정 엔진 (버그 수정 완료)
     function validateGroup(group) {
+        // 숫자 순 정렬
         group.sort((a, b) => a.num - b.num);
         
-        // 1. 연속 (Run) 판정: 같은 색, 연속된 숫자
+        // 1. 연속 (Run): 같은 색상, 연속된 숫자
         const sameColor = group.every(t => t.color === group[0].color);
         const nums = group.map(t => t.num);
         const isSeq = nums.every((n, i) => i === 0 || n === nums[i-1] + 1);
         if (sameColor && isSeq) return "RUN";
 
-        // 2. 그룹 (Group) 판정: 같은 숫자, 다른 색상
+        // 2. 그룹 (Group): 다른 색상, 같은 숫자
         const sameNum = group.every(t => t.num === group[0].num);
-        // [수정] 색상 집합의 크기가 타일 개수와 같아야 함 (중복 색상 없음)
+        // [수정] 색상 집합의 크기가 타일 개수와 같아야 함 (색상 중복 체크)
         const diffCols = new Set(group.map(t => t.color)).size === group.length;
-        // [추가] 같은 숫자는 최대 4장까지만 가능 (색상이 4개뿐이므로 diffCols가 해결해주지만 명시적 추가)
+        // [수정] 같은 숫자는 최대 4장까지만 가능 (색상이 4개뿐이므로)
         if (sameNum && diffCols && group.length <= 4) return "GROUP";
 
-        return null;
+        return null; // 모든 규칙 위반
+    }
+
+    // [입체 육각형 타일 그리기 함수]
+    function drawHexTile(ctx, x, y, w, h, isDragging) {
+        const r = 8; // 둥글기
+        const depth = 4; // 입체 두께
+
+        // 1. 입체 두께(그림자 역할) 부분 그리기
+        ctx.fillStyle = "#bdc3c7"; // 어두운 회색
+        ctx.beginPath();
+        ctx.moveTo(x + r, y + depth);
+        ctx.lineTo(x + w - r, y + depth);
+        ctx.quadraticCurveTo(x + w, y + depth, x + w, y + r + depth);
+        ctx.lineTo(x + w, y + h - r + depth);
+        ctx.quadraticCurveTo(x + w, y + h + depth, x + w - r, y + h + depth);
+        ctx.lineTo(x + r, y + h + depth);
+        ctx.quadraticCurveTo(x, y + h + depth, x, y + h - r + depth);
+        ctx.lineTo(x, y + r + depth);
+        ctx.quadraticCurveTo(x, y + depth, x + r, y + depth);
+        ctx.fill();
+
+        // 2. 타일 윗면 그리기
+        ctx.fillStyle = "#ecf0f1"; // 밝은 아이보리/흰색
+        ctx.beginPath();
+        // 왼쪽 위 모서리에서 시작해서 시계방향으로 육각형 모양 그리기
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.fill();
+
+        // 테두리
+        ctx.strokeStyle = isDragging ? "#3498db" : "#95a5a6";
+        ctx.lineWidth = isDragging ? 3 : 1;
+        ctx.stroke();
     }
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "#222";
+        
+        // 그리드 가이드 (희미하게 배경에 표시)
+        ctx.strokeStyle = "rgba(255,255,255,0.03)";
+        ctx.lineWidth = 1;
         for (let x = 0; x <= canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
         for (let y = 0; y <= canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
         tiles.forEach(tile => {
-            // [입체 디자인] 그림자 효과 추가
-            ctx.save();
-            ctx.shadowColor = "rgba(0,0,0,0.5)";
-            ctx.shadowBlur = 4;
-            ctx.shadowOffsetY = 3;
+            // 입체 육각형 타일 그리기
+            drawHexTile(ctx, tile.x, tile.y, TILE_W, TILE_H, draggingTile === tile);
 
-            // 타일 몸체
-            ctx.fillStyle = "#F5F5F5";
-            ctx.beginPath(); ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 5); ctx.fill();
-            
-            // [입체 디자인] 하단 두께 표현
-            ctx.fillStyle = "#DCDCDC";
-            ctx.beginPath(); ctx.roundRect(tile.x, tile.y + TILE_H - 4, TILE_W, 4, {bl: 5, br: 5}); ctx.fill();
-            
-            ctx.restore();
-
-            // 테두리 (선택 시 파란색)
-            ctx.strokeStyle = (draggingTile === tile) ? "#007AFF" : "#888";
-            ctx.lineWidth = (draggingTile === tile) ? 2 : 1;
-            ctx.stroke();
-
-            // 숫자
+            // 숫자 (굵고 동글동글한 폰트로 변경)
             ctx.fillStyle = tile.color;
-            ctx.font = "bold 24px Arial"; // 폰트 크기 살짝 키움
+            ctx.font = "bold 26px 'Arial Rounded MT Bold', sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
         });
     }
 
+    // 터치/마우스 이벤트 (기존과 동일)
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        if (y > canvas.height - 70) return;
+        if (y > canvas.height - 70) return; // UI 영역 터치 방지
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
                 draggingTile = t;
                 offsetX = x - t.x; offsetY = y - t.y;
-                tiles.push(tiles.splice(i, 1)[0]);
+                tiles.push(tiles.splice(i, 1)[0]); // 드래그하는 타일을 맨 위로
                 break;
             }
         }
@@ -201,8 +237,9 @@
     }
     function onEnd() {
         if (draggingTile) {
-            draggingTile.x = Math.floor(draggingTile.x / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_W) / 2;
-            draggingTile.y = Math.floor(draggingTile.y / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_H) / 2;
+            // 그리드 중심 스냅 (육각형 모양에 맞춰 미세 조정)
+            draggingTile.x = Math.round(draggingTile.x / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_W) / 2;
+            draggingTile.y = Math.round(draggingTile.y / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_H) / 2;
         }
         draggingTile = null;
         render();
