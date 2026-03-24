@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Tile Run Test</title>
+    <style>
+        body { margin: 0; background: #2c3e50; color: white; text-align: center; font-family: sans-serif; }
+        canvas { background: #34495e; display: block; margin: 0 auto; border: 2px solid #fff; }
+        .menu { padding: 20px; }
+        button { padding: 15px 25px; font-size: 18px; background: #e67e22; border: none; color: white; border-radius: 8px; cursor: pointer; }
+        .ad-space { margin-top: 20px; padding: 10px; border: 1px dashed #bdc3c7; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="menu">
+        <h2>🧩 Tile Run 프로토타입</h2>
+        <button onclick="drawTiles()">게임 시작 (타일 14장)</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="ad-space">
+        <p>※ 여기에 나중에 <b>[보험료 계산기]</b> 링크를 넣을 예정입니다.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth * 0.9;
+        canvas.height = 400;
+
+        let hand = [];
+        const colors = ['red', 'yellow', 'blue', 'black'];
+
+        function drawTiles() {
+            hand = [];
+            for(let i=0; i<14; i++) {
+                hand.push({
+                    num: Math.floor(Math.random() * 13) + 1,
+                    color: colors[Math.floor(Math.random() * colors.length)]
+                });
+            }
+            render();
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hand.forEach((tile, i) => {
+                const x = 10 + (i % 5) * 60;
+                const y = 10 + Math.floor(i / 5) * 80;
+                
+                // 타일 그리기
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x, y, 50, 70);
+                
+                // 숫자와 색상
+                ctx.fillStyle = tile.color;
+                ctx.font = 'bold 20px Arial';
+                ctx.fillText(tile.num, x + 15, y + 40);
+            });
+        }
+    </script>
+</body>
+</html>
