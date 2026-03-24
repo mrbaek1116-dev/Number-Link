@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Full Compatibility</title>
+    <title>Tile Run - Board Focus</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 15px; width: 100%; display: flex; justify-content: center; gap: 6px; z-index: 100; padding: 10px 0; }
-        button { padding: 10px 14px; font-size: 13px; background: #2c3e50; color: white; border: 1px solid #34495e; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; }
+        button { padding: 12px 16px; font-size: 14px; background: #2c3e50; color: white; border: 1px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer; }
         .btn-complete { background: #27ae60; }
         .btn-draw { background: #8e44ad; }
-        .pool-info { position: absolute; top: 10px; right: 15px; color: #f1c40f; font-size: 13px; font-weight: bold; }
+        .pool-info { position: absolute; top: 15px; right: 20px; color: #f1c40f; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -23,7 +23,7 @@
 <div class="ui-bottom">
     <button onclick="drawInitialTiles()">리셋</button>
     <button class="btn-draw" onclick="drawOneTile()">타일 뽑기</button>
-    <button onclick="sortHand()">정렬</button>
+    <button onclick="sortHand()">손패 정렬</button>
     <button class="btn-complete" onclick="submitToBoard()">조합 등록</button>
 </div>
 
@@ -36,9 +36,8 @@
     let draggingTile = null;
     let offsetX, offsetY;
 
-    // 타일 및 그리드 설정
     const TILE_W = 46, TILE_H = 60;
-    const MARGIN = 12; // 타일 사이 최소 간격
+    const GRID_X = 55, GRID_Y = 70;
     const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22'];
     
     let handLineY;
@@ -46,8 +45,8 @@
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        // 핸드 영역을 버튼 위쪽으로 충분히 확보 (바닥에서 120px 띄움)
-        handLineY = canvas.height * 0.45; 
+        // 핸드 영역을 버튼 위쪽으로 넉넉히(150px 이상) 띄움
+        handLineY = canvas.height - 250; 
         render();
     }
     window.addEventListener('resize', resize);
@@ -72,20 +71,20 @@
         const handTiles = tiles.filter(tile => tile.y >= handLineY);
         const idx = handTiles.length;
         
-        // [수정] 화면 가로폭에 따라 자동으로 줄바꿈 개수 계산
-        const cols = Math.floor((canvas.width - 20) / (TILE_W + MARGIN));
-        t.x = 15 + (idx % cols) * (TILE_W + MARGIN);
-        t.y = handLineY + 40 + Math.floor(idx / cols) * (TILE_H + MARGIN + 10);
+        // 가로 폭에 맞춰 자동 줄바꿈 (가로 여백 20px 제외)
+        const maxCols = Math.floor((canvas.width - 40) / GRID_X);
+        t.x = 20 + (idx % maxCols) * GRID_X;
+        t.y = handLineY + 30 + Math.floor(idx / maxCols) * GRID_Y;
         
         tiles.push(t);
         if(!isInit) { updatePoolDisplay(); render(); }
     }
 
-    function updatePoolDisplay() { document.getElementById('pool-display').innerText = `더미: ${pool.length}`; }
+    function updatePoolDisplay() { document.getElementById('pool-display').innerText = `남은 타일: ${pool.length}`; }
 
     function sortHand() {
-        let handTiles = tiles.filter(t => t.y >= handLineY);
         let boardTiles = tiles.filter(t => t.y < handLineY);
+        let handTiles = tiles.filter(t => t.y >= handLineY);
 
         handTiles.sort((a, b) => {
             if (a.joker && !b.joker) return 1;
@@ -94,10 +93,10 @@
             return a.num - b.num;
         });
 
-        const cols = Math.floor((canvas.width - 20) / (TILE_W + MARGIN));
+        const maxCols = Math.floor((canvas.width - 40) / GRID_X);
         handTiles.forEach((t, i) => {
-            t.x = 15 + (i % cols) * (TILE_W + MARGIN);
-            t.y = handLineY + 40 + Math.floor(i / cols) * (TILE_H + MARGIN + 10);
+            t.x = 20 + (i % maxCols) * GRID_X;
+            t.y = handLineY + 30 + Math.floor(i / maxCols) * GRID_Y;
         });
 
         tiles = [...boardTiles, ...handTiles];
@@ -120,27 +119,23 @@
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // 구분선
-        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        // 구분선 및 구역 표시
+        ctx.strokeStyle = "rgba(255,255,255,0.1)";
         ctx.beginPath(); ctx.moveTo(0, handLineY); ctx.lineTo(canvas.width, handLineY); ctx.stroke();
         
-        ctx.fillStyle = "#777";
-        ctx.font = "bold 12px sans-serif";
-        ctx.fillText("BOARD AREA", 15, handLineY - 15);
-        ctx.fillText("PLAYER HAND", 15, handLineY + 25);
+        ctx.fillStyle = "rgba(255,255,255,0.3)";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillText("BOARD (중앙 보드 영역)", 20, 30);
+        ctx.fillText("HAND (내 손패)", 20, handLineY + 20);
 
         tiles.forEach(tile => {
             drawHexTile(ctx, tile.x, tile.y, TILE_W, TILE_H, draggingTile === tile);
             if (tile.joker) {
-                ctx.fillStyle = "#333";
-                ctx.font = "bold 20px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText("J", tile.x + TILE_W/2, tile.y + TILE_H/2 + 7);
+                ctx.fillStyle = "#333"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
+                ctx.fillText("J", tile.x + TILE_W/2, tile.y + TILE_H/2 + 8);
             } else {
-                ctx.fillStyle = tile.color;
-                ctx.font = "bold 26px Arial";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
+                ctx.fillStyle = tile.color; ctx.font = "bold 26px Arial Rounded MT Bold";
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
                 ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2 + 2);
             }
         });
@@ -149,7 +144,8 @@
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        // [수정] 버튼 영역 클릭 방해 방지 범위를 100px로 상향
+        
+        // 버튼 영역(하단 100px) 터치 무시
         if (y > canvas.height - 100) return;
 
         for (let i = tiles.length - 1; i >= 0; i--) {
@@ -172,16 +168,13 @@
     }
     function onEnd() {
         if (draggingTile) {
-            // [수정] 대각선 방지를 위해 칸에 딱 맞춰 정렬 (자석 효과)
-            const snapX = TILE_W + MARGIN;
-            const snapY = TILE_H + MARGIN + 10;
-            draggingTile.x = Math.round((draggingTile.x - 15) / snapX) * snapX + 15;
+            // 보드와 핸드 그리드 정렬 보정
+            draggingTile.x = Math.round((draggingTile.x - 20) / GRID_X) * GRID_X + 20;
+            const startRefY = draggingTile.y >= handLineY ? handLineY + 30 : 50;
+            draggingTile.y = Math.round((draggingTile.y - startRefY) / GRID_Y) * GRID_Y + startRefY;
             
-            if (draggingTile.y >= handLineY) {
-                draggingTile.y = Math.round((draggingTile.y - (handLineY + 40)) / snapY) * snapY + (handLineY + 40);
-            } else {
-                draggingTile.y = Math.round((draggingTile.y - 20) / snapY) * snapY + 20;
-            }
+            // [추가] 작업표시줄 뒤로 숨지 않도록 하단 한계선 설정
+            if (draggingTile.y > canvas.height - 130) draggingTile.y = canvas.height - 140;
         }
         draggingTile = null;
         render();
