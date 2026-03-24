@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Official 14 Fix</title>
+    <title>Tile Run - Joker System</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Arial Rounded MT Bold', sans-serif; overflow: hidden; }
         canvas { display: block; }
@@ -20,8 +20,8 @@
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 클릭 범위 수정</h3>
-    <p style="margin:5px; font-size:12px; color:#aaa;">타일을 위쪽으로 배치하여 클릭을 쉽게 개선했습니다.</p>
+    <h3 style="margin:0;">Tile Run: 조커 시스템</h3>
+    <p style="margin:5px; font-size:12px; color:#aaa;">컬러/흑백 조커 2장이 무작위로 섞여 나옵니다.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -42,7 +42,7 @@
 
     const GRID_SIZE = 65; 
     const TILE_W = 48, TILE_H = 64;
-    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22']; 
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22']; // 빨, 노, 파, 주
 
     function resize() {
         canvas.width = window.innerWidth;
@@ -51,23 +51,40 @@
     }
     window.addEventListener('resize', resize);
 
-    // [수정] 타일 생성 위치를 화면 아래에서 250px~350px 위로 대폭 상향
+    // [8단계 수정] 106장 덱을 만들고 조커 2장을 섞어 14장을 배분
     function drawInitialTiles() {
         tiles = [];
-        const startY = canvas.height - 350; // 훨씬 위쪽에서 생성
-        for (let i = 0; i < 14; i++) {
-            tiles.push({
-                x: 30 + (i % 5) * 70,
-                y: startY + Math.floor(i / 5) * 85,
-                num: Math.floor(Math.random() * 13) + 1,
-                color: colors[Math.floor(Math.random() * colors.length)]
+        let fullDeck = [];
+        // 1~13까지 색상별 2세트
+        for (let i = 0; i < 2; i++) {
+            colors.forEach(color => {
+                for (let n = 1; n <= 13; n++) {
+                    fullDeck.push({ num: n, color: color, joker: null });
+                }
             });
+        }
+        // 조커 2장 추가
+        fullDeck.push({ num: 'J', color: 'color', joker: 'color' }); // 컬러 조커
+        fullDeck.push({ num: 'J', color: 'bw', joker: 'bw' });       // 흑백 조커
+
+        // 셔플
+        fullDeck.sort(() => Math.random() - 0.5);
+
+        const startY = canvas.height - 350; 
+        for (let i = 0; i < 14; i++) {
+            let t = fullDeck[i];
+            t.x = 30 + (i % 5) * 70;
+            t.y = startY + Math.floor(i / 5) * 85;
+            tiles.push(t);
         }
         render();
     }
 
     function sortTiles() {
         tiles.sort((a, b) => {
+            if (a.joker && !b.joker) return 1;
+            if (!a.joker && b.joker) return -1;
+            if (a.joker && b.joker) return 0;
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
@@ -79,13 +96,12 @@
         render();
     }
 
-    // 규칙 검증 로직 (중복 색상/숫자 판정 포함)
     function checkBoardRules() {
         const groups = findGroups();
         if (groups.length === 0) { alert("가로로 3장 이상 붙여주세요!"); return; }
         let msg = "";
         groups.forEach((group, i) => {
-            const result = validateGroup(group);
+            const result = validateGroupWithJoker(group);
             msg += `조합 ${i+1}: ${result ? (result === "RUN" ? "연속 성공! ✅" : "그룹 성공! ✅") : "규칙 위반 ❌"}\n`;
         });
         alert(msg);
@@ -122,20 +138,68 @@
         return foundGroups;
     }
 
-    function validateGroup(group) {
-        group.sort((a, b) => a.num - b.num);
-        const sameColor = group.every(t => t.color === group[0].color);
-        const nums = group.map(t => t.num);
-        const isSeq = nums.every((n, i) => i === 0 || n === nums[i-1] + 1);
-        if (sameColor && isSeq) return "RUN";
+    // [8단계 핵심] 조커를 포함한 정밀 규칙 판정 엔진
+    function validateGroupWithJoker(group) {
+        const jokerCount = group.filter(t => t.joker).length;
+        const normalTiles = group.filter(t => !t.joker);
 
-        const sameNum = group.every(t => t.num === group[0].num);
-        const diffCols = new Set(group.map(t => t.color)).size === group.length;
-        if (sameNum && diffCols && group.length <= 4) return "GROUP";
+        // 1. 연속 (Run) 판정
+        // 조커를 제외한 타일들이 모두 같은 색상이어야 함
+        if (normalTiles.length > 0) {
+            const sameColor = normalTiles.every(t => t.color === normalTiles[0].color);
+            if (sameColor) {
+                // 숫자를 정렬하고 조커가 와야 할 자리에 있는지 체크
+                const nums = normalTiles.map(t => t.num).sort((a, b) => a - b);
+                let neededJokers = 0;
+                for (let i = 1; i < nums.length; i++) {
+                    neededJokers += nums[i] - nums[i - 1] - 1;
+                }
+                // 연속된 숫자를 만들기 위해 필요한 조커 개수가 가진 조커 개수보다 작거나 같아야 함
+                if (neededJokers <= jokerCount) return "RUN";
+            }
+        } else if (jokerCount >= 3) {
+            // 조커로만 이루어진 조합도 일단 연속으로 인정 (실제 게임 규칙에 따라 다름)
+            return "RUN";
+        }
+
+        // 2. 그룹 (Group) 판정
+        // 조커를 제외한 타일들이 모두 같은 숫자여야 함
+        if (normalTiles.length > 0) {
+            const sameNum = normalTiles.every(t => t.num === normalTiles[0].num);
+            // 색상이 모두 달라야 함
+            const cols = normalTiles.map(t => t.color);
+            const diffCols = new Set(cols).size === cols.length;
+            // 같은 숫자는 색상이 4개뿐이므로, 조커를 포함해 최대 4장까지만 가능
+            if (sameNum && diffCols && group.length <= 4) return "GROUP";
+        } else if (jokerCount >= 3) {
+            return "GROUP";
+        }
+
         return null;
     }
 
-    // 입체 대각선 타일 그리기
+    // 조커 타일 그리기 전용 함수
+    function drawJokerFace(ctx, x, y, w, h, type) {
+        ctx.save();
+        ctx.translate(x + w / 2, y + h / 2);
+        
+        // 얼굴 배경
+        ctx.fillStyle = type === 'color' ? "#ecf0f1" : "#bdc3c7";
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
+
+        // 눈 (컬러 조커는 무지개색, 흑백 조커는 회색)
+        ctx.fillStyle = type === 'color' ? "#333" : "#555";
+        ctx.beginPath(); ctx.arc(-7, -5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(7, -5, 3, 0, Math.PI * 2); ctx.fill();
+
+        // 웃는 입
+        ctx.strokeStyle = type === 'color' ? "#e74c3c" : "#555";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 3, 10, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+        
+        ctx.restore();
+    }
+
     function drawHexTile(ctx, x, y, w, h, isDragging) {
         const r = 10; 
         const d = 5; 
@@ -158,26 +222,31 @@
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        ctx.lineWidth = 1;
         for (let x = 0; x <= canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
         for (let y = 0; y <= canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
         tiles.forEach(tile => {
             drawHexTile(ctx, tile.x, tile.y, TILE_W, TILE_H, draggingTile === tile);
-            ctx.fillStyle = tile.color;
-            ctx.font = "bold 26px Arial Rounded MT Bold";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
+            
+            if (tile.joker) {
+                // 조커 얼굴 그리기
+                drawJokerFace(ctx, tile.x, tile.y, TILE_W, TILE_H, tile.joker);
+            } else {
+                // 일반 숫자 그리기
+                ctx.fillStyle = tile.color;
+                ctx.font = "bold 26px Arial Rounded MT Bold";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
+            }
         });
     }
 
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        
-        // 버튼 영역 터치 방지 (하단 100px)
         if (y > canvas.height - 100) return;
-
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
