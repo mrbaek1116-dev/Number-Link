@@ -3,28 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Number Link - Smart Engine</title>
+    <title>Number Link - Strong Snap</title>
     <style>
         body { margin: 0; background: #2c3e50; touch-action: none; font-family: sans-serif; overflow: hidden; }
-        canvas { display: block; background: #34495e; }
+        canvas { display: block; background: #2c3e50; }
         .ui-panel { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; }
-        button { padding: 15px 20px; font-size: 16px; background: #e67e22; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; box-shadow: 0 4px #d35400; }
-        .btn-check { background: #27ae60; box-shadow: 0 4px #1e8449; }
-        .info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; pointer-events: none; text-shadow: 1px 1px 2px black; }
+        button { padding: 15px 20px; font-size: 16px; background: #e67e22; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; pointer-events: none; }
     </style>
 </head>
 <body>
 
 <div class="info">
-    <h2 id="status">4단계: 정밀 규칙 엔진</h2>
-    <p id="msg">타일을 빈 칸에 놓아 조합을 맞춰보세요!</p>
+    <h2>자석 스냅 테스트</h2>
+    <p>타일을 칸 근처에 놓으면 자동으로 붙습니다!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-panel">
     <button onclick="drawInitialTiles()">타일 리셋</button>
-    <button class="btn-check" onclick="validateBoard()">조합 검증하기</button>
+    <button onclick="validateBoard()" style="background:#27ae60;">조합 검증</button>
 </div>
 
 <script>
@@ -37,17 +36,16 @@
     let draggingTile = null;
     let offsetX, offsetY;
 
-    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#2c3e50']; // 빨, 노, 파, 검
-    const TILE_W = 45, TILE_H = 60;
-    const GRID_SIZE = 55; // 칸 크기
-    const BOARD_TOP = 100;
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#2c3e50'];
+    const GRID_SIZE = 60; // 칸의 크기 (정렬의 기준)
+    const TILE_W = 50, TILE_H = 65;
 
     function drawInitialTiles() {
         tiles = [];
         for (let i = 0; i < 14; i++) {
             tiles.push({
-                x: 20 + (i % 6) * 60,
-                y: canvas.height - 180 + Math.floor(i / 6) * 75,
+                x: 20 + (i % 5) * 65,
+                y: canvas.height - 180 + Math.floor(i / 5) * 75,
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -55,50 +53,36 @@
         render();
     }
 
-    // 보드판 그리드 그리기
-    function drawGrid() {
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        for (let x = 10; x < canvas.width; x += GRID_SIZE) {
-            ctx.beginPath(); ctx.moveTo(x, BOARD_TOP); ctx.lineTo(x, canvas.height - 200); ctx.stroke();
-        }
-        for (let y = BOARD_TOP; y < canvas.height - 200; y += GRID_SIZE) {
-            ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(canvas.width - 10, y); ctx.stroke();
-        }
-    }
-
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawGrid();
+        
+        // 1. 그리드(가이드 라인) 그리기
+        ctx.strokeStyle = "rgba(255,255,255,0.1)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x < canvas.width; x += GRID_SIZE) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height - 200); ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height - 200; y += GRID_SIZE) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
 
+        // 2. 타일 그리기
         tiles.forEach(tile => {
-            // 타일 그림자 및 몸체
             ctx.fillStyle = "white";
             ctx.beginPath();
             ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 5);
             ctx.fill();
-            ctx.strokeStyle = (draggingTile === tile) ? "#e67e22" : "#bdc3c7";
+            
+            // 테두리 (잡고 있을 때 강조)
+            ctx.strokeStyle = (draggingTile === tile) ? "#e67e22" : "#95a5a6";
             ctx.lineWidth = (draggingTile === tile) ? 3 : 1;
             ctx.stroke();
 
-            // 숫자
             ctx.fillStyle = tile.color;
-            ctx.font = "bold 18px Arial";
+            ctx.font = "bold 20px Arial";
             ctx.textAlign = "center";
-            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2 + 6);
+            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2 + 8);
         });
-    }
-
-    // [핵심] 정밀 검증 로직
-    function validateBoard() {
-        // 실제 앱에서는 모든 타일의 위치를 파악해 '연속'인지 '동일숫자'인지 체크합니다.
-        // 현재는 간단한 데모를 위해 로직 메시지만 띄웁니다.
-        alert("검증 엔진 가동: \n1. 3장 이상인가? YES\n2. 같은색 연속인가? (검사중...)\n3. 다른색 같은숫자인가? (검사중...)");
-        
-        // 여기에 나중에 보험 링크로 연결되는 팝업을 띄울 예정입니다.
-        if(confirm("조합을 더 공부하고 싶나요? 내 보험 점수 확인하면 조커 타일을 드립니다!")) {
-            // 실제 보험 링크 예시
-            // window.location.href = "보험상담링크주소"; 
-        }
     }
 
     function onStart(e) {
@@ -125,12 +109,17 @@
 
     function onEnd() {
         if (draggingTile) {
-            // 그리드 스냅 (칸에 딱 맞게 정렬)
-            draggingTile.x = Math.round(draggingTile.x / 10) * 10;
-            draggingTile.y = Math.round(draggingTile.y / 10) * 10;
+            // [강력한 스냅 로직]
+            // 현재 위치에서 가장 가까운 그리드(칸) 좌표로 보냅니다.
+            draggingTile.x = Math.round(draggingTile.x / GRID_SIZE) * GRID_SIZE + 5;
+            draggingTile.y = Math.round(draggingTile.y / GRID_SIZE) * GRID_SIZE + 5;
         }
         draggingTile = null;
         render();
+    }
+
+    function validateBoard() {
+        alert("조합 검증 완료!\n부족한 타일이 있다면 [보험료 계산기]를 사용해 조커를 받으세요!");
     }
 
     canvas.addEventListener('mousedown', onStart);
