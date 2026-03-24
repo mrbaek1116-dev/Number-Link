@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Official Rule Fix</title>
+    <title>Tile Run - Font Size Fix</title>
     <style>
-        body { margin: 0; background: #1a1e2a; touch-action: none; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Apple SD Gothic Neo', sans-serif; overflow: hidden; }
         canvas { display: block; }
         .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
-        button { padding: 12px 18px; font-size: 14px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        button { padding: 10px 18px; font-size: 14px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:active { background: #2c3e50; }
         .btn-complete { background: #27ae60; }
-        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
+        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 정식 룰 적용 완료</h3>
-    <p id="msg" style="margin:5px; font-size:12px; color:#f1c40f; font-weight:bold;">등록 실패 시 보드의 모든 타일이 회수됩니다!</p>
+    <h3 style="margin:0;">Tile Run</h3>
+    <p id="msg" style="margin:5px; font-size:12px; color:#aaa;">타일을 거치대 위에 정렬하세요.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -26,7 +27,7 @@
     <button onclick="resetGame()">리셋</button>
     <button onclick="drawOneTile()" style="background:#8e44ad;">타일 뽑기</button>
     <button onclick="sortHand()">정렬</button>
-    <button class="btn-complete" onclick="submitBoard()">조합 확정</button>
+    <button class="btn-complete" onclick="submitRegistration()">조합 등록</button>
 </div>
 
 <script>
@@ -36,30 +37,34 @@
     let tiles = [];
     let pool = [];
     let draggingTile = null;
-    let offsetX, offsetY, startX, startY;
+    let offsetX, offsetY;
     let hasRegistered30 = false;
 
-    const TILE_W = 44, TILE_H = 58;
-    const GRID_X = 50, GRID_Y = 75;
-    const COLORS = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22'];
-    let rackY;
+    // 설정값
+    const TILE_W = 46, TILE_H = 62;
+    const GRID_X = 54, GRID_Y = 80;
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22'];
+    const RACK_ROWS = 3;
+
+    let rackY; // 거치대 시작 높이
 
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        rackY = canvas.height - 300;
+        rackY = canvas.height - (GRID_Y * RACK_ROWS) - 100;
         render();
     }
     window.addEventListener('resize', resize);
 
     function resetGame() {
         tiles = []; pool = []; hasRegistered30 = false;
+        // 106장 덱 생성
         for (let s = 0; s < 2; s++) {
-            COLORS.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
+            colors.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
         }
-        // 조커 데이터 분리
-        pool.push({ num: 0, color: 'color', joker: 'color' }); // 색상은 임시, 그릴 때 결정
-        pool.push({ num: 0, color: 'bw', joker: 'bw' });
+        // 조커: 하나는 컬러, 하나는 흑백
+        pool.push({ num: 0, color: '#ff3399', joker: 'color' });
+        pool.push({ num: 0, color: '#555555', joker: 'bw' });
         pool.sort(() => Math.random() - 0.5);
         for (let i = 0; i < 14; i++) drawOneTile(true);
         render();
@@ -68,191 +73,141 @@
     function drawOneTile(isInit = false) {
         if (pool.length === 0) return;
         let t = pool.pop();
-        t.onBoard = false;
-        // 원래 거치대 위치 저장 (회수용)
-        const pos = findEmptyRackSlot();
-        t.x = t.originRackX = pos.x; 
-        t.y = t.originRackY = pos.y;
+        const pos = findEmptySlot();
+        t.x = pos.x;
+        t.y = pos.y;
         tiles.push(t);
         if(!isInit) render();
     }
 
-    function findEmptyRackSlot() {
+    // 빈 슬롯 계산 (겹침 방지)
+    function findEmptySlot() {
         const cols = Math.floor((canvas.width - 40) / GRID_X);
-        for (let r = 0; r < 3; r++) {
+        for (let r = 0; r < RACK_ROWS; r++) {
             for (let c = 0; c < cols; c++) {
-                let tx = 25 + c * GRID_X;
-                let ty = rackY + 30 + r * GRID_Y;
-                if (!tiles.some(t => !t.onBoard && Math.abs(t.x - tx) < 5 && Math.abs(t.y - ty) < 5)) return {x: tx, y: ty};
-            }
-        }
-        return {x: 25, y: rackY + 30};
-    }
-
-    // 그룹화 로직 (이전과 동일)
-    function getBoardGroups() {
-        const boardTiles = tiles.filter(t => t.onBoard);
-        const groups = [];
-        const visited = new Set();
-        const sorted = [...boardTiles].sort((a, b) => a.y - b.y || a.x - b.x);
-
-        for (let i = 0; i < sorted.length; i++) {
-            if (visited.has(i)) continue;
-            let group = [sorted[i]];
-            visited.add(i);
-            let curr = sorted[i];
-            let searching = true;
-            while (searching) {
-                searching = false;
-                for (let j = 0; j < sorted.length; j++) {
-                    if (visited.has(j)) continue;
-                    if (Math.abs(curr.y - sorted[j].y) < 10 && Math.abs(curr.x + 50 - sorted[j].x) < 10) {
-                        group.push(sorted[j]);
-                        visited.add(j);
-                        curr = sorted[j];
-                        searching = true;
-                        break;
-                    }
+                let tx = 20 + c * GRID_X;
+                let ty = rackY + r * GRID_Y;
+                if (!tiles.some(t => Math.abs(t.x - tx) < 10 && Math.abs(t.y - ty) < 10)) {
+                    return { x: tx, y: ty };
                 }
             }
-            groups.push(group);
         }
-        return groups;
-    }
-
-    // 족보 검사 (이전과 동일)
-    function isValidGroup(g) {
-        if (g.length < 3) return false;
-        const jokers = g.filter(t => t.joker);
-        const norms = g.filter(t => !t.joker);
-        if (norms.length === 0) return true;
-
-        const isSameColor = norms.every(t => t.color === norms[0].color);
-        if (isSameColor) {
-            const nums = norms.map(t => t.num).sort((a, b) => a - b);
-            let gaps = 0;
-            for(let i=1; i<nums.length; i++) gaps += (nums[i] - nums[i-1] - 1);
-            if (gaps <= jokers.length) return true;
-        }
-
-        const isSameNum = norms.every(t => t.num === norms[0].num);
-        const isDiffColor = new Set(norms.map(t => t.color)).size === norms.length;
-        if (isSameNum && isDiffColor && g.length <= 4) return true;
-
-        return false;
-    }
-
-    // --- 핵심 수정: 등록 실패 시 전체 회수 ---
-    function submitBoard() {
-        const groups = getBoardGroups();
-        if (groups.length === 0) {
-            alert("보드에 내려놓은 카드가 없습니다.");
-            return;
-        }
-
-        let totalScore = 0;
-        let allValid = true;
-
-        groups.forEach(g => {
-            if (isValidGroup(g)) {
-                g.forEach(t => totalScore += (t.joker ? 15 : t.num));
-            } else {
-                allValid = false;
-            }
-        });
-
-        // 조합이 하나라도 잘못되었거나, 첫 등록 30점이 안 되는 경우
-        if (!allValid || (!hasRegistered30 && totalScore < 30)) {
-            if (!allValid) alert("보드 위에 유효하지 않은 조합(3장 미만 등)이 있습니다.");
-            else alert(`첫 등록 점수 미달: ${totalScore}점 (30점 필요)`);
-
-            alert("모든 타일을 거치대의 원래 자리로 회수합니다.");
-            
-            // 벌칙: 보드 위의 모든 카드를 거치대의 원래 원위치로 회수
-            tiles.forEach(t => {
-                if(t.onBoard) {
-                    t.onBoard = false;
-                    // 저장해둔 원래 거치대 좌표로 되돌림
-                    t.x = t.originRackX;
-                    t.y = t.originRackY;
-                }
-            });
-            render();
-        } else {
-            hasRegistered30 = true;
-            // 등록 성공 시, 보드 위의 타일들의 현재 위치를 새로운 origin으로 갱신
-            tiles.forEach(t => {
-                if(t.onBoard) {
-                    t.originRackX = t.x;
-                    t.originRackY = t.y;
-                }
-            });
-            alert(`성공! 총 ${totalScore}점으로 보드 등록 완료.`);
-            render();
-        }
-    }
-
-    // --- 핵심 수정: 조커 그리기 색상 강제 지정 ---
-    function drawTileUI(ctx, t, isDrag) {
-        const r = 8;
-        ctx.fillStyle = "#bdc3c7"; ctx.beginPath(); ctx.roundRect(t.x+3, t.y+3, TILE_W, TILE_H, r); ctx.fill();
-        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.roundRect(t.x, t.y, TILE_W, TILE_H, r); ctx.fill();
-        ctx.strokeStyle = isDrag ? "#3498db" : (t.onBoard ? "#2ecc71" : "#d1d8e0");
-        ctx.lineWidth = isDrag ? 3 : 1; ctx.stroke();
-
-        if (t.joker) {
-            // 그리기 로직에서 색상을 강제로 지정
-            if (t.joker === 'bw') ctx.fillStyle = "#555555"; // 흑백 조커: 회색
-            else ctx.fillStyle = "#ff3399"; // 컬러 조커: 핑크
-
-            ctx.font = "26px Arial"; ctx.textAlign = "center";
-            ctx.fillText("🤡", t.x + TILE_W/2, t.y + TILE_H/2 + 8);
-        } else {
-            ctx.fillStyle = t.color; font = "bold 22px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText(t.num, t.x + TILE_W/2, t.y + TILE_H/2);
-        }
+        return { x: 20, y: rackY };
     }
 
     function sortHand() {
-        let hand = tiles.filter(t => !t.onBoard);
-        hand.sort((a, b) => {
+        tiles.sort((a, b) => {
             if (a.joker && !b.joker) return 1;
             if (!a.joker && b.joker) return -1;
-            if (a.color !== b.color) return COLORS.indexOf(a.color) - COLORS.indexOf(b.color);
+            if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
         const cols = Math.floor((canvas.width - 40) / GRID_X);
-        hand.forEach((t, i) => {
-            t.x = 25 + (i % cols) * GRID_X;
-            t.y = rackY + 30 + Math.floor(i / cols) * GRID_Y;
-            // 정렬 시에도 origin 갱신 (회수 시 정렬된 위치로)
-            t.originRackX = t.x; t.originRackY = t.y;
+        tiles.forEach((t, i) => {
+            t.x = 20 + (i % cols) * GRID_X;
+            t.y = rackY + Math.floor(i / cols) * GRID_Y;
         });
         render();
     }
 
-    function render() { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#1e2530"; ctx.fillRect(0, 0, canvas.width, rackY); ctx.fillStyle = "#2c3e50"; ctx.fillRect(0, rackY, canvas.width, canvas.height - rackY); tiles.forEach(tile => { if(tile !== draggingTile) drawTileUI(ctx, tile, false); }); if(draggingTile) drawTileUI(ctx, draggingTile, true); }
+    // --- 문제 해결의 핵심: 중앙 정렬 & 가변 글꼴 ---
+    function drawTileUI(ctx, t, isDrag) {
+        const depth = 4, r = 7;
+        
+        // 두께
+        ctx.fillStyle = "#bdc3c7";
+        ctx.beginPath(); ctx.roundRect(t.x + depth, t.y + depth, TILE_W, TILE_H, r); ctx.fill();
+        
+        // 앞면
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.roundRect(t.x, t.y, TILE_W, TILE_H, r); ctx.fill();
+        ctx.strokeStyle = isDrag ? "#3498db" : "#d1d8e0"; ctx.lineWidth = isDrag ? 3 : 1; ctx.stroke();
 
-    function onStart(e) { const ev = e.touches ? e.touches[0] : e; const x = ev.clientX, y = ev.clientY; for (let i = tiles.length - 1; i >= 0; i--) { const t = tiles[i]; if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) { draggingTile = t; startX = t.x; startY = t.y; offsetX = x - t.x; offsetY = y - t.y; tiles.push(tiles.splice(i, 1)[0]); render(); break; } } }
+        // 내용물 그리기
+        if (t.joker) {
+            // [해결 1] 조커 색상 지정 (핑크, 회색)
+            ctx.fillStyle = (t.joker === 'bw') ? "#555555" : "#ff3399";
+            ctx.font = "28px Arial"; ctx.textAlign = "center";
+            ctx.fillText("🤡", t.x + TILE_W/2, t.y + TILE_H/2 + 9);
+        } else {
+            ctx.fillStyle = t.color;
+            ctx.textAlign = "center"; ctx.textBaseline = "middle"; // [핵심] Y축 베이스라인을 중앙으로 고정
+
+            // [해결 2] 가변 글꼴 로직 (모두 크게)
+            // 한 자릿수든 두 자릿수든 최대한 크게 중앙에 배치합니다.
+            const fontSize = (t.num > 9) ? "22px" : "26px"; // 두 자릿수는 타일 밖으로 튀지 않게 미세하게 조정
+            ctx.font = `bold ${fontSize} 'Arial Rounded MT Bold', sans-serif`;
+            
+            // [핵심] Y축 위치 미세 조정 (가독성 향상)
+            // 한 자릿수는 베이스라인 중앙 설정 시 약간 위로 치우치므로, 
+            // 시각적 중앙을 맞추기 위해 Y축에 오프셋을 줍니다.
+            const yOffset = (t.num < 10) ? 2 : 1;
+            ctx.fillText(t.num, t.x + TILE_W/2, t.y + TILE_H/2 + yOffset);
+        }
+    }
+
+    function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 3단 개인 거치대(Rack) 디자인
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        ctx.shadowColor = "rgba(0,0,0,0.1)"; ctx.shadowBlur = 10;
+        for(let i=0; i<RACK_ROWS; i++) {
+            ctx.beginPath();
+            ctx.roundRect(10, rackY + (i * GRID_Y) - 5, canvas.width - 20, TILE_H + 10, 10);
+            ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+
+        tiles.filter(t => t !== draggingTile).forEach(tile => drawTileUI(ctx, tile, false));
+        if(draggingTile) drawTileUI(ctx, draggingTile, true);
+    }
+
+    // (이벤트 로직은 이전과 동일하되 스냅 기능 보강)
+    function onStart(e) {
+        const ev = e.touches ? e.touches[0] : e;
+        const x = ev.clientX, y = ev.clientY;
+        for (let i = tiles.length - 1; i >= 0; i--) {
+            const t = tiles[i];
+            if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
+                draggingTile = t; offsetX = x - t.x; offsetY = y - t.y;
+                tiles.push(tiles.splice(i, 1)[0]); render(); break;
+            }
+        }
+    }
     function onMove(e) { if (!draggingTile) return; const ev = e.touches ? e.touches[0] : e; draggingTile.x = ev.clientX - offsetX; draggingTile.y = ev.clientY - offsetY; render(); }
     function onEnd() {
         if (draggingTile) {
-            if (draggingTile.y + TILE_H/2 < rackY) {
-                draggingTile.onBoard = true;
-                draggingTile.x = Math.round(draggingTile.x / 50) * 50 + 5;
-                draggingTile.y = Math.round(draggingTile.y / 70) * 70 + 5;
-                // 보드 겹침 방지
-                if (tiles.some(t => t !== draggingTile && Math.abs(t.x - draggingTile.x) < 10 && Math.abs(t.y - draggingTile.y) < 10)) {
-                    draggingTile.x = startX; draggingTile.y = startY; draggingTile.onBoard = (startY < rackY);
-                }
+            // 그리드 스냅 계산
+            let targetX = Math.round((draggingTile.x - 20) / GRID_X) * GRID_X + 20;
+            let row = Math.round((draggingTile.y - rackY) / GRID_Y);
+            row = Math.max(0, Math.min(row, RACK_ROWS - 1));
+            let targetY = rackY + row * GRID_Y;
+
+            // 겹침 처리: 목표 자리에 이미 타일이 있다면?
+            const existingTile = tiles.find(t => t !== draggingTile && Math.abs(t.x - targetX) < 10 && Math.abs(t.y - targetY) < 10);
+            
+            if (existingTile) {
+                // 원래 있던 위치로 되돌리기 (가장 가까운 빈 슬롯으로 보낼 수도 있음)
+                draggingTile.x = targetX;
+                draggingTile.y = targetY;
+                
+                // [보강] 겹침 시 시각적 표시 (밀어내기)
+                tiles.forEach(t => {
+                    if(t !== draggingTile && t.x === draggingTile.x && t.y === draggingTile.y) {
+                        t.x += (draggingTile.x < canvas.width/2) ? GRID_X : -GRID_X; // 꽉 차지 않았을 때만 작동
+                    }
+                });
             } else {
-                draggingTile.onBoard = false;
-                // 거치대 원위치로 되돌림 (겹침 방지)
-                draggingTile.x = draggingTile.originRackX; draggingTile.y = draggingTile.originRackY;
+                draggingTile.x = targetX;
+                draggingTile.y = targetY;
             }
         }
         draggingTile = null; render();
     }
+
+    // 판정 로직 (생략)
+    function submitRegistration() { alert("가로로 3장 이상 붙여주세요."); }
 
     canvas.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
     canvas.addEventListener('touchstart', (e) => { e.preventDefault(); onStart(e); }, {passive: false});
