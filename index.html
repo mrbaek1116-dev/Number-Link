@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Test Mode</title>
+    <title>Tile Run - Optimization</title>
     <style>
         body { margin: 0; background: #000; touch-action: none; font-family: sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 15px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 10; flex-wrap: wrap; }
+        .ui-bottom { position: absolute; bottom: 10px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; }
         button { 
-            padding: 10px 15px; font-size: 14px; background: #333; color: white; 
+            padding: 10px 12px; font-size: 13px; background: #333; color: white; 
             border: 2px solid #555; border-radius: 8px; font-weight: bold; cursor: pointer;
         }
         .btn-check { background: #e67e22; border-color: #d35400; }
@@ -20,14 +20,14 @@
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 테스트 모드 (42장)</h3>
-    <p style="margin:5px; font-size:12px; color:#00ff00;">[색상 정렬]을 누르면 조합 찾기가 쉽습니다!</p>
+    <h3 style="margin:0;">Tile Run: 최적화 모드</h3>
+    <p style="margin:5px; font-size:11px; color:#00ff00;">타일 간격을 넓히고 이동 범위를 수정했습니다.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-bottom">
-    <button onclick="drawInitialTiles()">타일 리셋 (42장)</button>
+    <button onclick="drawInitialTiles()">리셋 (42장)</button>
     <button class="btn-sort" onclick="sortTiles()">색상 정렬</button>
     <button class="btn-check" onclick="checkBoardRules()">조합 확인</button>
 </div>
@@ -42,7 +42,7 @@
 
     const GRID_SIZE = 55; 
     const TILE_W = 46, TILE_H = 60;
-    const colors = ['#FF3B30', '#FFCC00', '#007AFF', '#FF9500']; // 빨, 노, 파, 주
+    const colors = ['#FF3B30', '#FFCC00', '#007AFF', '#FF9500']; 
 
     function resize() {
         canvas.width = window.innerWidth;
@@ -51,13 +51,14 @@
     }
     window.addEventListener('resize', resize);
 
-    // 타일을 42장 생성 (테스트용)
+    // 타일 생성 위치를 더 위쪽으로 끌어올림 (버튼에 가려지지 않게)
     function drawInitialTiles() {
         tiles = [];
+        const startY = 60; // 화면 위쪽부터 생성
         for (let i = 0; i < 42; i++) {
             tiles.push({
                 x: 10 + (i % 6) * 60,
-                y: canvas.height - 450 + Math.floor(i / 6) * 65,
+                y: startY + Math.floor(i / 6) * 75, // 줄 간격을 65 -> 75로 늘려 겹침 방지
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -65,27 +66,24 @@
         render();
     }
 
-    // 색상별 -> 숫자별 정렬 기능
     function sortTiles() {
         tiles.sort((a, b) => {
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
         
-        const startY = canvas.height - 450;
+        const startY = 60; 
         tiles.forEach((t, i) => {
             t.x = 10 + (i % 6) * 60;
-            t.y = startY + Math.floor(i / 6) * 65;
+            t.y = startY + Math.floor(i / 6) * 75;
         });
         render();
     }
 
+    // 규칙 검증 (기존과 동일)
     function checkBoardRules() {
         const groups = findGroups();
-        if (groups.length === 0) {
-            alert("가로로 3장 이상 붙여주세요!");
-            return;
-        }
+        if (groups.length === 0) { alert("가로로 3장 이상 붙여주세요!"); return; }
         let msg = "";
         groups.forEach((group, i) => {
             const result = validateGroup(group);
@@ -103,7 +101,6 @@
             if (visited.has(i)) continue;
             let group = [sortedTiles[i]];
             visited.add(i);
-
             let current = sortedTiles[i];
             let foundNext = true;
             while (foundNext) {
@@ -132,7 +129,6 @@
         const nums = group.map(t => t.num);
         const isSeq = nums.every((n, i) => i === 0 || n === nums[i-1] + 1);
         if (sameColor && isSeq) return "RUN";
-
         const sameNum = group.every(t => t.num === group[0].num);
         const diffCols = new Set(group.map(t => t.color)).size === group.length;
         if (sameNum && diffCols) return "GROUP";
@@ -155,7 +151,6 @@
             ctx.strokeStyle = (draggingTile === tile) ? "#FFCC00" : "#888";
             ctx.lineWidth = (draggingTile === tile) ? 3 : 1;
             ctx.stroke();
-
             ctx.fillStyle = tile.color;
             ctx.font = "bold 22px Arial";
             ctx.textAlign = "center";
@@ -164,9 +159,14 @@
         });
     }
 
+    // 이벤트 리스너: UI 버튼 영역을 피해서 터치하도록 보완
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
+        
+        // 버튼이 있는 하단 영역(바닥에서 70px)은 터치 무시하여 타일 잡기 방해 방지
+        if (y > canvas.height - 70) return;
+
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
