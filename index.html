@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Board Placement</title>
+    <title>Tile Run - Rules & Snap Fix</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: sans-serif; overflow: hidden; }
         canvas { display: block; }
         .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
-        button { padding: 10px 18px; font-size: 14px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        button { padding: 12px 18px; font-size: 14px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-complete { background: #27ae60; }
         .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
     </style>
@@ -16,8 +16,8 @@
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 보드에 카드 내기</h3>
-    <p id="msg" style="margin:5px; font-size:12px; color:#aaa;">카드를 위쪽 보드 영역으로 드래그해서 내려놓으세요.</p>
+    <h3 style="margin:0;">Tile Run: 30점 룰 적용</h3>
+    <p id="msg" style="margin:5px; font-size:12px; color:#aaa;">보드에 30점 이상을 내려놓아야 첫 등록이 가능합니다.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -25,30 +25,29 @@
 <div class="ui-bottom">
     <button onclick="resetGame()">리셋</button>
     <button onclick="drawOneTile()" style="background:#8e44ad;">타일 뽑기</button>
-    <button onclick="sortHand()">거치대 정렬</button>
-    <button class="btn-complete" onclick="submitBoard()">조합 확정</button>
+    <button onclick="sortHand()">정렬</button>
+    <button class="btn-complete" onclick="submitBoard()">조합 확정 (30점 체크)</button>
 </div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     
-    let tiles = []; // 모든 타일 (속성에 onBoard 여부 포함)
+    let tiles = [];
     let pool = [];
     let draggingTile = null;
-    let offsetX, offsetY;
+    let offsetX, offsetY, startX, startY; // 드래그 시작 위치 저장용
     let hasRegistered30 = false;
 
     const TILE_W = 44, TILE_H = 58;
     const GRID_X = 50, GRID_Y = 75;
     const COLORS = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22'];
-    
-    let rackY; // 거치대 시작 높이
+    let rackY;
 
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        rackY = canvas.height - 280; // 하단 280px 지점부터 거치대
+        rackY = canvas.height - 300;
         render();
     }
     window.addEventListener('resize', resize);
@@ -58,7 +57,10 @@
         for (let s = 0; s < 2; s++) {
             COLORS.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
         }
-        pool.push({ num: 0, color: '#ff3399', joker: 'color' }, { num: 0, color: '#555555', joker: 'bw' });
+        // 조커: 하나는 컬러, 하나는 흑백 (데이터 구조 분리)
+        pool.push({ num: 0, color: '#ff3399', joker: 'color' });
+        pool.push({ num: 0, color: '#555555', joker: 'bw' });
+        
         pool.sort(() => Math.random() - 0.5);
         for (let i = 0; i < 14; i++) drawOneTile(true);
         render();
@@ -67,28 +69,38 @@
     function drawOneTile(isInit = false) {
         if (pool.length === 0) return;
         let t = pool.pop();
-        t.onBoard = false; // 기본은 거치대 상태
-        const pos = findEmptyRackSlot();
+        t.onBoard = false;
+        const pos = findEmptySlot(false);
         t.x = pos.x; t.y = pos.y;
         tiles.push(t);
         if(!isInit) render();
     }
 
-    // 거치대 빈자리 찾기
-    function findEmptyRackSlot() {
-        const cols = Math.floor((canvas.width - 40) / GRID_X);
-        for (let r = 0; r < 3; r++) {
-            for (let c = 0; c < cols; c++) {
-                let tx = 20 + c * GRID_X;
-                let ty = rackY + 20 + r * GRID_Y;
-                if (!tiles.some(t => !t.onBoard && Math.abs(t.x - tx) < 5 && Math.abs(t.y - ty) < 5)) return {x: tx, y: ty};
+    // 빈 자리 찾기 (겹침 방지)
+    function findEmptySlot(toBoard, targetX, targetY) {
+        if (toBoard) {
+            // 보드 위 빈자리 (단순 그리드 체크)
+            let tx = Math.round(targetX / 50) * 50 + 5;
+            let ty = Math.round(targetY / 70) * 70 + 5;
+            if (!tiles.some(t => t !== draggingTile && Math.abs(t.x - tx) < 10 && Math.abs(t.y - ty) < 10)) {
+                return {x: tx, y: ty};
+            }
+            return null; // 자리가 있으면 null 반환하여 원래 위치로
+        } else {
+            // 거치대 빈자리
+            const cols = Math.floor((canvas.width - 40) / GRID_X);
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < cols; c++) {
+                    let tx = 25 + c * GRID_X;
+                    let ty = rackY + 30 + r * GRID_Y;
+                    if (!tiles.some(t => !t.onBoard && Math.abs(t.x - tx) < 5 && Math.abs(t.y - ty) < 5)) return {x: tx, y: ty};
+                }
             }
         }
-        return {x: 20, y: rackY + 20};
+        return {x: 25, y: rackY + 30};
     }
 
     function sortHand() {
-        // 거치대에 있는 타일만 정렬
         let hand = tiles.filter(t => !t.onBoard);
         hand.sort((a, b) => {
             if (a.joker && !b.joker) return 1;
@@ -98,24 +110,25 @@
         });
         const cols = Math.floor((canvas.width - 40) / GRID_X);
         hand.forEach((t, i) => {
-            t.x = 20 + (i % cols) * GRID_X;
-            t.y = rackY + 20 + Math.floor(i / cols) * GRID_Y;
+            t.x = 25 + (i % cols) * GRID_X;
+            t.y = rackY + 30 + Math.floor(i / cols) * GRID_Y;
         });
         render();
     }
 
     function drawTileUI(ctx, t, isDrag) {
-        const r = 6;
-        ctx.fillStyle = "#bdc3c7"; // 두께
+        const r = 8;
+        ctx.fillStyle = "#bdc3c7"; 
         ctx.beginPath(); ctx.roundRect(t.x+3, t.y+3, TILE_W, TILE_H, r); ctx.fill();
-        ctx.fillStyle = "#ffffff"; // 앞면
+        ctx.fillStyle = "#ffffff";
         ctx.beginPath(); ctx.roundRect(t.x, t.y, TILE_W, TILE_H, r); ctx.fill();
         ctx.strokeStyle = isDrag ? "#3498db" : (t.onBoard ? "#2ecc71" : "#d1d8e0");
         ctx.lineWidth = isDrag ? 3 : 1; ctx.stroke();
 
         if (t.joker) {
-            ctx.font = "24px Arial"; ctx.textAlign = "center";
-            ctx.fillStyle = t.joker === 'color' ? "#ff3399" : "#333333";
+            // 조커 색상 구분
+            ctx.fillStyle = (t.joker === 'color') ? "#ff3399" : "#555555";
+            ctx.font = "26px Arial"; ctx.textAlign = "center";
             ctx.fillText("🤡", t.x + TILE_W/2, t.y + TILE_H/2 + 8);
         } else {
             ctx.fillStyle = t.color;
@@ -126,22 +139,12 @@
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // 1. 보드 영역 (상단)
-        ctx.fillStyle = "#222a38";
-        ctx.fillRect(0, 0, canvas.width, rackY);
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.font = "bold 40px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText("BOARD AREA", canvas.width/2, rackY/2);
-
-        // 2. 거치대 영역 (하단)
-        ctx.fillStyle = "#2c3e50";
-        ctx.fillRect(0, rackY, canvas.width, canvas.height - rackY);
-        // 거치대 라인 디자인
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        for(let i=0; i<3; i++) {
-            ctx.strokeRect(10, rackY + 15 + (i * GRID_Y), canvas.width - 20, TILE_H + 10);
-        }
+        // 보드
+        ctx.fillStyle = "#1e2530"; ctx.fillRect(0, 0, canvas.width, rackY);
+        // 거치대
+        ctx.fillStyle = "#2c3e50"; ctx.fillRect(0, rackY, canvas.width, canvas.height - rackY);
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        for(let i=0; i<3; i++) ctx.strokeRect(15, rackY + 25 + (i * GRID_Y), canvas.width - 30, TILE_H + 10);
 
         tiles.forEach(tile => { if(tile !== draggingTile) drawTileUI(ctx, tile, false); });
         if(draggingTile) drawTileUI(ctx, draggingTile, true);
@@ -153,7 +156,9 @@
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
-                draggingTile = t; offsetX = x - t.x; offsetY = y - t.y;
+                draggingTile = t; 
+                startX = t.x; startY = t.y; // 원래 위치 저장
+                offsetX = x - t.x; offsetY = y - t.y;
                 tiles.push(tiles.splice(i, 1)[0]); render(); break;
             }
         }
@@ -169,34 +174,50 @@
 
     function onEnd() {
         if (draggingTile) {
-            // 보드 영역에 놓았는지 확인
             if (draggingTile.y + TILE_H/2 < rackY) {
-                draggingTile.onBoard = true;
-                // 보드 위 그리드 스냅 (50px 단위)
-                draggingTile.x = Math.round(draggingTile.x / 50) * 50 + 5;
-                draggingTile.y = Math.round(draggingTile.y / 70) * 70 + 5;
+                // 보드로 이동 시도
+                let pos = findEmptySlot(true, draggingTile.x, draggingTile.y);
+                if (pos) {
+                    draggingTile.x = pos.x; draggingTile.y = pos.y;
+                    draggingTile.onBoard = true;
+                } else {
+                    // 자리가 있으면 튕겨나감 (원래 위치로)
+                    draggingTile.x = startX; draggingTile.y = startY;
+                }
             } else {
+                // 거치대로 이동
                 draggingTile.onBoard = false;
-                // 거치대 그리드 스냅
-                let row = Math.round((draggingTile.y - (rackY + 20)) / GRID_Y);
-                row = Math.max(0, Math.min(row, 2));
-                draggingTile.y = rackY + 20 + row * GRID_Y;
-                draggingTile.x = Math.round((draggingTile.x - 20) / GRID_X) * GRID_X + 20;
+                let pos = findEmptySlot(false);
+                draggingTile.x = pos.x; draggingTile.y = pos.y;
             }
         }
         draggingTile = null; render();
     }
 
-    // 조합 확정 (보드 위의 타일들을 검증)
+    // 30점 룰 체크 및 등록
     function submitBoard() {
-        // 현재는 보드에 카드가 올라가는 기능에 집중!
-        // 다음 단계에서 보드 위 타일들의 30점 판정 로직을 정교화할 예정입니다.
         const boardTiles = tiles.filter(t => t.onBoard);
         if(boardTiles.length === 0) {
-            alert("보드 위로 카드를 드래그해서 내려놓으세요!");
-        } else {
-            alert(`보드에 ${boardTiles.length}장의 카드가 배치되었습니다.`);
+            alert("보드에 카드를 내려놓으세요!");
+            return;
         }
+
+        let currentScore = 0;
+        boardTiles.forEach(t => currentScore += (t.joker ? 15 : t.num));
+
+        if (!hasRegistered30 && currentScore < 30) {
+            alert(`등록 실패! 현재 점수: ${currentScore}\n첫 등록은 반드시 30점 이상이어야 합니다.\n카드를 다시 거치대로 회수합니다.`);
+            // 벌칙: 보드 위의 카드 모두 거치대로 회수
+            boardTiles.forEach(t => {
+                t.onBoard = false;
+                const pos = findEmptySlot(false);
+                t.x = pos.x; t.y = pos.y;
+            });
+        } else {
+            hasRegistered30 = true;
+            alert(`등록 성공! (${currentScore}점)`);
+        }
+        render();
     }
 
     canvas.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
