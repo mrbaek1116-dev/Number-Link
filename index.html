@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Optimization</title>
+    <title>Tile Run - Final Step 7</title>
     <style>
         body { margin: 0; background: #000; touch-action: none; font-family: sans-serif; overflow: hidden; }
         canvas { display: block; }
@@ -20,8 +20,8 @@
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 최적화 모드</h3>
-    <p style="margin:5px; font-size:11px; color:#00ff00;">타일 간격을 넓히고 이동 범위를 수정했습니다.</p>
+    <h3 style="margin:0;">Tile Run: Step 7 Final</h3>
+    <p style="margin:5px; font-size:11px; color:#aaa;">타일 입체감 추가 및 중복 숫자 규칙 반영</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -41,7 +41,8 @@
     let offsetX, offsetY;
 
     const GRID_SIZE = 55; 
-    const TILE_W = 46, TILE_H = 60;
+    // 타일 크기를 살짝 줄임 (46x60 -> 44x58)
+    const TILE_W = 44, TILE_H = 58;
     const colors = ['#FF3B30', '#FFCC00', '#007AFF', '#FF9500']; 
 
     function resize() {
@@ -51,14 +52,13 @@
     }
     window.addEventListener('resize', resize);
 
-    // 타일 생성 위치를 더 위쪽으로 끌어올림 (버튼에 가려지지 않게)
     function drawInitialTiles() {
         tiles = [];
-        const startY = 60; // 화면 위쪽부터 생성
+        const startY = 60; 
         for (let i = 0; i < 42; i++) {
             tiles.push({
                 x: 10 + (i % 6) * 60,
-                y: startY + Math.floor(i / 6) * 75, // 줄 간격을 65 -> 75로 늘려 겹침 방지
+                y: startY + Math.floor(i / 6) * 78, // 줄 간격을 더 넓힘 (75 -> 78)
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -71,16 +71,14 @@
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
-        
         const startY = 60; 
         tiles.forEach((t, i) => {
             t.x = 10 + (i % 6) * 60;
-            t.y = startY + Math.floor(i / 6) * 75;
+            t.y = startY + Math.floor(i / 6) * 78;
         });
         render();
     }
 
-    // 규칙 검증 (기존과 동일)
     function checkBoardRules() {
         const groups = findGroups();
         if (groups.length === 0) { alert("가로로 3장 이상 붙여주세요!"); return; }
@@ -123,50 +121,67 @@
         return foundGroups;
     }
 
+    // [핵심 수정] 중복 숫자 판정 로직 추가
     function validateGroup(group) {
         group.sort((a, b) => a.num - b.num);
+        
+        // 1. 연속 (Run) 판정: 같은 색, 연속된 숫자
         const sameColor = group.every(t => t.color === group[0].color);
         const nums = group.map(t => t.num);
         const isSeq = nums.every((n, i) => i === 0 || n === nums[i-1] + 1);
         if (sameColor && isSeq) return "RUN";
+
+        // 2. 그룹 (Group) 판정: 같은 숫자, 다른 색상
         const sameNum = group.every(t => t.num === group[0].num);
+        // [수정] 색상 집합의 크기가 타일 개수와 같아야 함 (중복 색상 없음)
         const diffCols = new Set(group.map(t => t.color)).size === group.length;
-        if (sameNum && diffCols) return "GROUP";
+        // [추가] 같은 숫자는 최대 4장까지만 가능 (색상이 4개뿐이므로 diffCols가 해결해주지만 명시적 추가)
+        if (sameNum && diffCols && group.length <= 4) return "GROUP";
+
         return null;
     }
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = "#222";
-        for (let x = 0; x <= canvas.width; x += GRID_SIZE) {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-        }
-        for (let y = 0; y <= canvas.height; y += GRID_SIZE) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-        }
+        for (let x = 0; x <= canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+        for (let y = 0; y <= canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
         tiles.forEach(tile => {
+            // [입체 디자인] 그림자 효과 추가
+            ctx.save();
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 3;
+
+            // 타일 몸체
             ctx.fillStyle = "#F5F5F5";
-            ctx.beginPath(); ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 4); ctx.fill();
-            ctx.strokeStyle = (draggingTile === tile) ? "#FFCC00" : "#888";
-            ctx.lineWidth = (draggingTile === tile) ? 3 : 1;
+            ctx.beginPath(); ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 5); ctx.fill();
+            
+            // [입체 디자인] 하단 두께 표현
+            ctx.fillStyle = "#DCDCDC";
+            ctx.beginPath(); ctx.roundRect(tile.x, tile.y + TILE_H - 4, TILE_W, 4, {bl: 5, br: 5}); ctx.fill();
+            
+            ctx.restore();
+
+            // 테두리 (선택 시 파란색)
+            ctx.strokeStyle = (draggingTile === tile) ? "#007AFF" : "#888";
+            ctx.lineWidth = (draggingTile === tile) ? 2 : 1;
             ctx.stroke();
+
+            // 숫자
             ctx.fillStyle = tile.color;
-            ctx.font = "bold 22px Arial";
+            ctx.font = "bold 24px Arial"; // 폰트 크기 살짝 키움
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
         });
     }
 
-    // 이벤트 리스너: UI 버튼 영역을 피해서 터치하도록 보완
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        
-        // 버튼이 있는 하단 영역(바닥에서 70px)은 터치 무시하여 타일 잡기 방해 방지
         if (y > canvas.height - 70) return;
-
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
