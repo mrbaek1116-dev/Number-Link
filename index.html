@@ -3,53 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Number Link - Tile Drag</title>
+    <title>Number Link - Rule Check</title>
     <style>
         body { margin: 0; background: #2c3e50; touch-action: none; font-family: sans-serif; overflow: hidden; }
-        canvas { display: block; background: #34495e; touch-action: none; }
-        .ui-top { position: absolute; top: 10px; width: 100%; text-align: center; color: white; pointer-events: none; }
-        .btn-draw { 
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            padding: 15px 30px; font-size: 18px; background: #e67e22; color: white; 
-            border: none; border-radius: 50px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px #d35400;
-        }
-        .btn-draw:active { box-shadow: 0 2px #d35400; transform: translate(-50%, 2px); }
+        canvas { display: block; background: #34495e; }
+        .ui-panel { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 15px 20px; font-size: 16px; background: #e67e22; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .btn-check { background: #27ae60; }
+        .info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; pointer-events: none; }
     </style>
 </head>
 <body>
 
-<div class="ui-top">
-    <h2>🧩 Number Link: 타일을 옮겨보세요!</h2>
-    <p>타일을 드래그하여 배치할 수 있습니다.</p>
+<div class="info">
+    <h2 id="status">3단계: 규칙 검증 시스템</h2>
+    <p>타일을 3장 이상 모으고 [검증]을 눌러보세요!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
-<button class="btn-draw" onclick="drawInitialTiles()">새 타일 받기</button>
+
+<div class="ui-panel">
+    <button onclick="drawInitialTiles()">새 타일</button>
+    <button class="btn-check" onclick="checkRules()">규칙 검증</button>
+</div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
     let tiles = [];
     let draggingTile = null;
-    let offsetX = 0;
-    let offsetY = 0;
+    let offsetX, offsetY;
 
-    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#2c3e50']; // 빨, 노, 파, 검
-    const TILE_W = 55;
-    const TILE_H = 75;
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#2c3e50'];
+    const TILE_W = 50, TILE_H = 70;
 
-    // 타일 생성 함수
     function drawInitialTiles() {
         tiles = [];
         for (let i = 0; i < 14; i++) {
             tiles.push({
-                x: 30 + (i % 5) * (TILE_W + 15),
-                y: 150 + Math.floor(i / 5) * (TILE_H + 15),
+                x: 20 + (i % 6) * 60,
+                y: canvas.height - 200 + Math.floor(i / 6) * 80,
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -57,83 +53,89 @@
         render();
     }
 
-    // 화면 그리기
+    // [핵심] 규칙 검증 로직
+    function checkRules() {
+        // 인접한 타일끼리 그룹화 (간단한 거리 기반 로직)
+        const groups = [];
+        const visited = new Set();
+
+        for (let i = 0; i < tiles.length; i++) {
+            if (visited.has(i)) continue;
+            const currentGroup = [tiles[i]];
+            visited.add(i);
+
+            for (let j = 0; j < tiles.length; j++) {
+                if (visited.has(j)) continue;
+                // 타일 사이의 거리가 가까우면 같은 그룹으로 간주 (약 70픽셀 내외)
+                const dist = Math.hypot(tiles[i].x - tiles[j].x, tiles[i].y - tiles[j].y);
+                if (dist < 80) {
+                    currentGroup.push(tiles[j]);
+                    visited.add(j);
+                }
+            }
+            if (currentGroup.length >= 3) groups.push(currentGroup);
+        }
+
+        if (groups.length === 0) {
+            alert("3장 이상 붙어있는 타일이 없습니다!");
+            return;
+        }
+
+        // 간단한 검증 알림
+        alert(groups.length + "개의 조합을 발견했습니다! (세부 규칙 엔진은 다음 단계에서 고도화)");
+    }
+
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // 보드 구역 표시 (시각적 가이드)
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.strokeRect(10, 100, canvas.width - 20, canvas.height - 250);
+        // 바닥판 가이드
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.fillRect(10, 80, canvas.width - 20, canvas.height - 300);
 
         tiles.forEach(tile => {
-            // 타일 그림자
-            ctx.fillStyle = "rgba(0,0,0,0.3)";
+            ctx.fillStyle = "white";
             ctx.beginPath();
-            ctx.roundRect(tile.x + 3, tile.y + 3, TILE_W, TILE_H, 8);
+            ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 5);
             ctx.fill();
-
-            // 타일 몸체
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 8);
-            ctx.fill();
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#bdc3c7";
+            ctx.strokeStyle = "#95a5a6";
             ctx.stroke();
 
-            // 숫자 그리기
             ctx.fillStyle = tile.color;
-            ctx.font = "bold 24px Arial";
+            ctx.font = "bold 20px Arial";
             ctx.textAlign = "center";
-            ctx.fillText(tile.num, tile.x + TILE_W / 2, tile.y + TILE_H / 2 + 8);
+            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2 + 7);
         });
     }
 
-    // 마우스/터치 이벤트 처리
-    function getEventPos(e) {
-        const ev = e.touches ? e.touches[0] : e;
-        return { x: ev.clientX, y: ev.clientY };
-    }
-
+    // 마우스/터치 리스너 (2단계와 동일)
     function onStart(e) {
-        const pos = getEventPos(e);
-        // 맨 위에 있는 타일부터 검사 (역순)
+        const ev = e.touches ? e.touches[0] : e;
+        const x = ev.clientX, y = ev.clientY;
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
-            if (pos.x >= t.x && pos.x <= t.x + TILE_W && pos.y >= t.y && pos.y <= t.y + TILE_H) {
+            if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
                 draggingTile = t;
-                offsetX = pos.x - t.x;
-                offsetY = pos.y - t.y;
-                // 드래그하는 타일을 맨 위로 올림
-                tiles.splice(i, 1);
-                tiles.push(draggingTile);
+                offsetX = x - t.x; offsetY = y - t.y;
+                tiles.push(tiles.splice(i, 1)[0]);
                 break;
             }
         }
     }
-
     function onMove(e) {
         if (!draggingTile) return;
-        const pos = getEventPos(e);
-        draggingTile.x = pos.x - offsetX;
-        draggingTile.y = pos.y - offsetY;
+        const ev = e.touches ? e.touches[0] : e;
+        draggingTile.x = ev.clientX - offsetX;
+        draggingTile.y = ev.clientY - offsetY;
         render();
     }
+    function onEnd() { draggingTile = null; }
 
-    function onEnd() {
-        draggingTile = null;
-    }
-
-    // 이벤트 리스너 등록 (PC/모바일 공용)
     canvas.addEventListener('mousedown', onStart);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
-
-    canvas.addEventListener('touchstart', onStart, { passive: false });
-    window.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchstart', onStart, {passive: false});
+    window.addEventListener('touchmove', onMove, {passive: false});
     window.addEventListener('touchend', onEnd);
 
-    // 초기 실행
     drawInitialTiles();
 </script>
 </body>
