@@ -3,38 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Number Link - Pure Game</title>
+    <title>Tile Run - Step 7</title>
     <style>
-        body { margin: 0; background: #1a252f; touch-action: none; font-family: 'Arial', sans-serif; overflow: hidden; }
+        body { margin: 0; background: #1a252f; touch-action: none; font-family: sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 15px; }
+        .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; }
         button { 
-            padding: 12px 25px; font-size: 16px; background: #34495e; color: white; 
-            border: 2px solid #ecf0f1; border-radius: 8px; font-weight: bold; cursor: pointer;
+            padding: 15px 25px; font-size: 16px; background: #34495e; color: white; 
+            border: 2px solid #ecf0f1; border-radius: 10px; font-weight: bold; cursor: pointer;
         }
-        button:active { background: #ecf0f1; color: #1a252f; }
-        .header { position: absolute; top: 15px; width: 100%; text-align: center; color: #bdc3c7; pointer-events: none; }
+        .btn-check { background: #27ae60; border-color: #2ecc71; }
+        .header { position: absolute; top: 15px; width: 100%; text-align: center; color: white; pointer-events: none; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2 style="color: white; margin: 0;">Tile Run: Multiplayer Base</h2>
-    <p style="margin: 5px;">타일을 드래그하여 정렬하세요</p>
+    <h2 id="status">7단계: 규칙 판정 엔진</h2>
+    <p>3장 이상 붙여놓고 '조합 확인'을 눌러보세요!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-bottom">
-    <button onclick="drawInitialTiles()">타일 새로 받기</button>
-    <button onclick="organizeHand()">정렬하기</button>
+    <button onclick="drawInitialTiles()">타일 리셋</button>
+    <button class="btn-check" onclick="checkBoardRules()">조합 확인</button>
 </div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     
-    // 화면 크기 설정
+    let tiles = [];
+    let draggingTile = null;
+    let offsetX, offsetY;
+
+    const GRID_SIZE = 60; 
+    const TILE_W = 52, TILE_H = 68;
+    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#ecf0f1']; // 빨, 노, 파, 흰
+
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -42,19 +49,10 @@
     }
     window.addEventListener('resize', resize);
 
-    let tiles = [];
-    let draggingTile = null;
-    let offsetX, offsetY;
-
-    const GRID_SIZE = 60; 
-    const TILE_W = 52, TILE_H = 68;
-    const colors = ['#e74c3c', '#f1c40f', '#3498db', '#ecf0f1']; // 빨, 노, 파, 흰(검정 대신)
-
     function drawInitialTiles() {
         tiles = [];
         for (let i = 0; i < 14; i++) {
             tiles.push({
-                id: Date.now() + i, // 멀티플레이를 위한 고유 ID
                 x: 20 + (i % 5) * 65,
                 y: canvas.height - 180 + Math.floor(i / 5) * 80,
                 num: Math.floor(Math.random() * 13) + 1,
@@ -64,52 +62,90 @@
         render();
     }
 
-    // 핸드 타일 자동 정렬 기능
-    function organizeHand() {
-        tiles.sort((a, b) => a.num - b.num); // 숫자 순 정렬
-        tiles.forEach((t, i) => {
-            t.x = 20 + (i % 7) * 55;
-            t.y = canvas.height - 160 + Math.floor(i / 7) * 75;
+    // [7단계 핵심] 규칙 검증 로직
+    function checkBoardRules() {
+        // 1. 붙어있는 타일들끼리 그룹 묶기
+        const groups = findGroups();
+        
+        if (groups.length === 0) {
+            alert("3장 이상 붙어있는 타일이 없습니다.");
+            return;
+        }
+
+        let results = [];
+        groups.forEach((group, index) => {
+            const type = validateGroup(group);
+            if (type === "RUN") results.push(`조합 ${index+1}: 연속(Run) 성공!`);
+            else if (type === "GROUP") results.push(`조합 ${index+1}: 그룹(Group) 성공!`);
+            else results.push(`조합 ${index+1}: 규칙에 맞지 않습니다.`);
         });
-        render();
+
+        alert(results.join("\n"));
+    }
+
+    // 타일 뭉치 찾기 (거리 기준)
+    function findGroups() {
+        const foundGroups = [];
+        const visited = new Set();
+
+        for (let i = 0; i < tiles.length; i++) {
+            if (visited.has(i)) continue;
+            let group = [tiles[i]];
+            visited.add(i);
+
+            for (let j = 0; j < tiles.length; j++) {
+                if (visited.has(j)) continue;
+                const dist = Math.hypot(tiles[i].x - tiles[j].x, tiles[i].y - tiles[j].y);
+                if (dist < GRID_SIZE * 1.5) { // 근처에 있으면 같은 뭉치
+                    group.push(tiles[j]);
+                    visited.add(j);
+                }
+            }
+            if (group.length >= 3) foundGroups.push(group);
+        }
+        return foundGroups;
+    }
+
+    // 진짜 규칙 검사 (연속인지, 같은 숫자인지)
+    function validateGroup(group) {
+        // 1. 같은 색상 연속 숫자 (Run)
+        const sameColor = group.every(t => t.color === group[0].color);
+        const nums = group.map(t => t.num).sort((a, b) => a - b);
+        const isSequence = nums.every((n, i) => i === 0 || n === nums[i-1] + 1);
+        if (sameColor && isSequence) return "RUN";
+
+        // 2. 다른 색상 같은 숫자 (Group)
+        const sameNum = group.every(t => t.num === group[0].num);
+        const diffColors = new Set(group.map(t => t.color)).size === group.length;
+        if (sameNum && diffColors) return "GROUP";
+
+        return null;
     }
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // 그리드 가이드 (배경)
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
         for (let x = 0; x < canvas.width; x += GRID_SIZE) {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height - 200); ctx.stroke();
         }
-        for (let y = 0; y < canvas.height - 200; y += GRID_SIZE) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-        }
 
         tiles.forEach(tile => {
-            // 타일 몸체
-            ctx.shadowBlur = 5; ctx.shadowColor = "black";
             ctx.fillStyle = "#ffffff";
             ctx.beginPath();
             ctx.roundRect(tile.x, tile.y, TILE_W, TILE_H, 6);
             ctx.fill();
-            ctx.shadowBlur = 0; // 그림자 초기화
-
-            // 테두리
             ctx.strokeStyle = (draggingTile === tile) ? "#3498db" : "#7f8c8d";
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // [수정] 숫자 정중앙 배치 로직
             ctx.fillStyle = tile.color;
             ctx.font = "bold 26px Arial";
             ctx.textAlign = "center";
-            ctx.textBaseline = "middle"; // 세로 기준선을 중앙으로!
-            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2 + 2); // 미세조정 +2
+            ctx.textBaseline = "middle";
+            ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
         });
     }
 
-    // 터치/마우스 이벤트 (생략 없이 통합)
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
@@ -132,7 +168,6 @@
     }
     function onEnd() {
         if (draggingTile) {
-            // 자석 스냅 (그리드 중심에 맞춤)
             draggingTile.x = Math.round(draggingTile.x / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_W) / 2;
             draggingTile.y = Math.round(draggingTile.y / GRID_SIZE) * GRID_SIZE + (GRID_SIZE - TILE_H) / 2;
         }
