@@ -3,31 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Official 14</title>
+    <title>Tile Run - Official 14 Fix</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Arial Rounded MT Bold', sans-serif; overflow: hidden; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 15px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
+        .ui-bottom { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
         button { 
-            padding: 12px 20px; font-size: 14px; background: #2c3e50; color: white; 
+            padding: 12px 18px; font-size: 14px; background: #2c3e50; color: white; 
             border: 2px solid #34495e; border-radius: 12px; font-weight: bold; cursor: pointer;
         }
         .btn-check { background: #e67e22; border-color: #d35400; }
         .btn-sort { background: #2980b9; border-color: #3498db; }
-        .header { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
+        .header { position: absolute; top: 15px; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h3 style="margin:0;">Tile Run: 정식 14장 모드</h3>
-    <p style="margin:5px; font-size:12px; color:#ddd;">대각선 입체 타일 적용 완료</p>
+    <h3 style="margin:0;">Tile Run: 클릭 범위 수정</h3>
+    <p style="margin:5px; font-size:12px; color:#aaa;">타일을 위쪽으로 배치하여 클릭을 쉽게 개선했습니다.</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-bottom">
-    <button onclick="drawInitialTiles()">타일 리셋 (14장)</button>
+    <button onclick="drawInitialTiles()">리셋 (14장)</button>
     <button class="btn-sort" onclick="sortTiles()">숫자 정렬</button>
     <button class="btn-check" onclick="checkBoardRules()">조합 확인</button>
 </div>
@@ -40,7 +40,7 @@
     let draggingTile = null;
     let offsetX, offsetY;
 
-    const GRID_SIZE = 60; 
+    const GRID_SIZE = 65; 
     const TILE_W = 48, TILE_H = 64;
     const colors = ['#e74c3c', '#f1c40f', '#3498db', '#e67e22']; 
 
@@ -51,14 +51,14 @@
     }
     window.addEventListener('resize', resize);
 
-    // [수정] 다시 원래대로 14장만 생성
+    // [수정] 타일 생성 위치를 화면 아래에서 250px~350px 위로 대폭 상향
     function drawInitialTiles() {
         tiles = [];
-        const startY = canvas.height - 200; 
+        const startY = canvas.height - 350; // 훨씬 위쪽에서 생성
         for (let i = 0; i < 14; i++) {
             tiles.push({
-                x: 20 + (i % 5) * 65,
-                y: startY + Math.floor(i / 5) * 80,
+                x: 30 + (i % 5) * 70,
+                y: startY + Math.floor(i / 5) * 85,
                 num: Math.floor(Math.random() * 13) + 1,
                 color: colors[Math.floor(Math.random() * colors.length)]
             });
@@ -71,14 +71,15 @@
             if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
             return a.num - b.num;
         });
-        const startY = canvas.height - 200;
+        const startY = canvas.height - 350;
         tiles.forEach((t, i) => {
-            t.x = 20 + (i % 5) * 65;
-            t.y = startY + Math.floor(i / 5) * 80;
+            t.x = 30 + (i % 5) * 70;
+            t.y = startY + Math.floor(i / 5) * 85;
         });
         render();
     }
 
+    // 규칙 검증 로직 (중복 색상/숫자 판정 포함)
     function checkBoardRules() {
         const groups = findGroups();
         if (groups.length === 0) { alert("가로로 3장 이상 붙여주세요!"); return; }
@@ -105,9 +106,9 @@
                 foundNext = false;
                 for (let j = 0; j < sortedTiles.length; j++) {
                     if (visited.has(j)) continue;
-                    const dx = Math.abs(current.x + (GRID_SIZE-5) - sortedTiles[j].x);
+                    const dx = Math.abs(current.x + GRID_SIZE - sortedTiles[j].x);
                     const dy = Math.abs(current.y - sortedTiles[j].y);
-                    if (dx < 20 && dy < 15) {
+                    if (dx < 25 && dy < 15) {
                         group.push(sortedTiles[j]);
                         visited.add(j);
                         current = sortedTiles[j];
@@ -134,24 +135,21 @@
         return null;
     }
 
-    // [수정] 대각선 아래(오른쪽+아래) 입체 그리기
+    // 입체 대각선 타일 그리기
     function drawHexTile(ctx, x, y, w, h, isDragging) {
-        const r = 8; 
-        const d = 5; // 두께(depth)
+        const r = 10; 
+        const d = 5; 
 
-        // 1. 대각선 그림자/두께 (오른쪽 아래로 5px씩 이동)
         ctx.fillStyle = "#bdc3c7"; 
         ctx.beginPath();
         ctx.roundRect(x + d, y + d, w, h, r);
         ctx.fill();
 
-        // 2. 타일 윗면
         ctx.fillStyle = "#ecf0f1"; 
         ctx.beginPath();
         ctx.roundRect(x, y, w, h, r);
         ctx.fill();
 
-        // 테두리
         ctx.strokeStyle = isDragging ? "#3498db" : "#95a5a6";
         ctx.lineWidth = isDragging ? 3 : 1;
         ctx.stroke();
@@ -159,14 +157,14 @@
 
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "rgba(255,255,255,0.03)";
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
         for (let x = 0; x <= canvas.width; x += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
         for (let y = 0; y <= canvas.height; y += GRID_SIZE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
         tiles.forEach(tile => {
             drawHexTile(ctx, tile.x, tile.y, TILE_W, TILE_H, draggingTile === tile);
             ctx.fillStyle = tile.color;
-            ctx.font = "bold 26px Arial";
+            ctx.font = "bold 26px Arial Rounded MT Bold";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(tile.num, tile.x + TILE_W/2, tile.y + TILE_H/2);
@@ -176,7 +174,10 @@
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        if (y > canvas.height - 70) return;
+        
+        // 버튼 영역 터치 방지 (하단 100px)
+        if (y > canvas.height - 100) return;
+
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
