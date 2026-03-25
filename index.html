@@ -2,36 +2,28 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Absolute Landscape</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tile Run - Professional Landscape Lock</title>
     <style>
-        body { 
-            margin: 0; background: #1a1e2a; overflow: hidden; 
-            touch-action: none; width: 100vw; height: 100vh;
-            display: flex; justify-content: center; align-items: center;
+        body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; width: 100vw; height: 100vh; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        /* 시작 안내 레이어 (브라우저 정책상 사용자 클릭이 필요함) */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(26, 30, 42, 0.9); z-index: 1000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; font-family: sans-serif; cursor: pointer;
         }
-        /* 핵심: 화면 방향에 따라 캔버스를 강제 회전 */
-        #container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
-        @media screen and (orientation: portrait) {
-            #gameCanvas {
-                transform: rotate(90deg);
-                transform-origin: center;
-                /* 세로일 때 가로/세로 길이를 뒤바꿈 */
-                width: 100vh;
-                height: 100vw;
-            }
-        }
-        canvas { display: block; background: #1a1e2a; }
     </style>
 </head>
 <body>
-    <div id="container">
-        <canvas id="gameCanvas"></canvas>
+    <div id="start-overlay" onclick="initGame()">
+        <div style="font-size: 60px; margin-bottom: 20px;">🎮</div>
+        <p style="font-size: 18px;">화면을 터치하여 게임 시작</p>
+        <p style="font-size: 12px; color: #888;">(가로 모드로 자동 전환됩니다)</p>
     </div>
+    <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -45,20 +37,35 @@ let gameState = {
     renderParams: {}
 };
 
-function updateLayout() {
-    // 실제 브라우저의 크기
-    const winW = window.innerWidth;
-    const winH = window.innerHeight;
+// [핵심] 가로 모드 강제 고정 함수
+async function initGame() {
+    const overlay = document.getElementById('start-overlay');
     
-    // 게임 내부에서 사용할 논리적 가로/세로 (무조건 가로 기준)
-    const isPortrait = winH > winW;
-    const gameW = isPortrait ? winH : winW;
-    const gameH = isPortrait ? winW : winH;
+    try {
+        // 1. 전체화면 요청 (가로 고정을 위해 필수인 브라우저가 많음)
+        if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+        }
+        
+        // 2. 화면 방향 가로로 고정
+        if (screen.orientation && screen.orientation.lock) {
+            await screen.orientation.lock('landscape').catch(err => {
+                console.log("Orientation lock failed: ", err);
+            });
+        }
+    } catch (err) {
+        console.log("Fullscreen failed: ", err);
+    }
 
-    canvas.width = gameW;
-    canvas.height = gameH;
+    overlay.style.display = 'none'; // 안내창 숨기기
+    updateLayout();
+}
 
-    // --- 기존의 스마트 그리드 로직 ---
+function updateLayout() {
+    // 이제 화면이 가로로 고정되었으므로 물리적인 폭과 높이를 그대로 사용합니다.
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
     const n = gameState.rackTiles.length;
     let cols = Math.max(10, n > 20 ? Math.ceil(n / 2) : 10);
     let rows = n > 10 ? 2 : 1;
@@ -67,7 +74,7 @@ function updateLayout() {
     const hGap = 4;
     const vGap = 12;
 
-    let tileW = Math.min(55, (gameW - padding * 2) / cols - hGap);
+    let tileW = Math.min(55, (canvas.width - padding * 2) / cols - hGap);
     let tileH = tileW * 1.35;
     
     const rackW = cols * (tileW + hGap) + 20;
@@ -75,18 +82,19 @@ function updateLayout() {
 
     gameState.renderParams = {
         tileW, tileH, hGap, vGap, rows, cols,
-        rackX: (gameW - rackW) / 2,
-        rackY: gameH - rackH - 15,
+        rackX: (canvas.width - rackW) / 2,
+        rackY: canvas.height - rackH - 15,
         rackW, rackH,
         fontSize: Math.floor(tileH * 0.5),
-        depth: tileH * 0.08,
-        isPortrait // 현재 세로 모드인지 여부 저장
+        depth: tileH * 0.08
     };
 
     gameState.rackTiles.forEach(tile => {
         if (tile !== gameState.draggingTile) snapToGrid(tile, tile.col, tile.row);
     });
 }
+
+// --- 이후 타일 그리기 및 이벤트 로직은 이전과 동일 (좌표 보정 불필요) ---
 
 function snapToGrid(tile, col, row) {
     const p = gameState.renderParams;
@@ -95,23 +103,6 @@ function snapToGrid(tile, col, row) {
     tile.col = col; tile.row = row;
 }
 
-// 좌표 변환 알고리즘 (세로 모드일 때 터치 좌표를 90도 회전 계산)
-function getPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const rawX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const rawY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-
-    if (gameState.renderParams.isPortrait) {
-        // 세로 모드(90도 회전된 상태)에서의 좌표 보정
-        return {
-            x: rawY,
-            y: rect.width - rawX
-        };
-    }
-    return { x: rawX, y: rawY };
-}
-
-// --- 렌더링 및 드래그 함수는 Phase 4.2와 동일 ---
 function draw4DTile(tile) {
     const p = gameState.renderParams;
     const { x, y, num, color } = tile;
@@ -137,6 +128,14 @@ function drawRack() {
     ctx.shadowBlur = 10; ctx.shadowColor = "black";
     ctx.beginPath(); ctx.roundRect(p.rackX, p.rackY, p.rackW, p.rackH, 8); ctx.fill();
     ctx.restore();
+}
+
+function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (e.touches ? e.touches[0].clientX : e.clientX) - rect.left,
+        y: (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+    };
 }
 
 canvas.addEventListener('mousedown', (e) => {
@@ -174,6 +173,7 @@ window.addEventListener('mouseup', () => {
     gameState.draggingTile = null;
 });
 
+// 터치 기본 동작 방지
 canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, {passive: false});
 
 function render() {
