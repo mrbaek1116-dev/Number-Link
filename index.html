@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Realistic 4D Tile</title>
+    <title>Tile Run - Phase 2</title>
     <style>
         body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
         canvas { display: block; }
@@ -16,80 +16,121 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-function resize() {
+// 게임 상태 데이터
+let gameState = {
+    rackTiles: [], // 내 거치대 타일들
+    boardTiles: [], // 바닥 타일들
+    renderParams: {
+        tileW: 45,
+        tileH: 60,
+        fontSize: 24
+    }
+};
+
+// 1. 화면 크기에 따른 타일 크기 동적 계산 (핵심!)
+function updateLayout() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    render();
+
+    const padding = 10;
+    const availableW = canvas.width - (padding * 2);
+    
+    // 거치대 타일 수에 따라 크기 조절 (최소 20개 기준 가로 배치)
+    // 타일이 많아지면(20개 이상) 한 줄에 들어가는 개수를 늘리고 크기를 줄임
+    let countPerRow = Math.max(10, Math.ceil(gameState.rackTiles.length / 2));
+    if (countPerRow < 10) countPerRow = 10;
+
+    let tileW = availableW / countPerRow - 4; // 간격 4px 제외
+    if (tileW > 60) tileW = 60; // 너무 커지지 않게 제한
+    
+    let tileH = tileW * 1.33; // 루미큐브 타일 비율 3:4 유지
+    
+    gameState.renderParams = {
+        tileW: tileW,
+        tileH: tileH,
+        fontSize: Math.floor(tileH * 0.45), // 타일 높이에 비례한 폰트
+        depth: tileH * 0.08,
+        padding: padding
+    };
 }
 
-/**
- * 실물 루미큐브 타일처럼 두께감이 느껴지는 4D 사각형 렌더링
- */
-function draw4DTile(x, y, num, color) {
-    const w = 45;      // 타일 너비
-    const h = 60;      // 타일 높이
-    const r = 4;       // 모서리 곡률
-    const depth = 5;   // 타일의 두께 (이게 4D 느낌을 줌)
+// 2. 4D 타일 렌더링 함수 (데이터 기반)
+function drawTile(tile, x, y) {
+    const { tileW, tileH, fontSize, depth } = gameState.renderParams;
+    const r = 4;
 
     ctx.save();
+    // Shadow
+    ctx.shadowColor = "rgba(0,0,0,0.4)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 3;
 
-    // 1. 가장 밑바닥 그림자 (바닥에 놓인 느낌)
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 4;
-
-    // 2. 타일의 두께 부분 (옆면/밑면 - 조금 더 어두운 아이보리)
-    ctx.fillStyle = "#d9d9d9"; 
+    // Side (Depth)
+    ctx.fillStyle = "#d9d9d9";
     ctx.beginPath();
-    ctx.roundRect(x, y + depth, w, h, r);
+    ctx.roundRect(x, y + depth, tileW, tileH, r);
     ctx.fill();
 
-    // 3. 타일의 윗면 (실제 숫자가 적히는 곳 - 밝은 흰색/아이보리)
-    ctx.shadowBlur = 0; // 윗면 그릴 땐 그림자 제거
-    ctx.shadowOffsetY = 0;
-    
-    // 약간의 그라데이션으로 플라스틱 질감 추가
-    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    // Top
+    ctx.shadowColor = "transparent";
+    const grad = ctx.createLinearGradient(x, y, x, y + tileH);
     grad.addColorStop(0, "#ffffff");
-    grad.addColorStop(1, "#f0f0f0");
-    
+    grad.addColorStop(1, "#f2f2f2");
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
+    ctx.roundRect(x, y, tileW, tileH, r);
     ctx.fill();
 
-    // 4. 테두리 (미세한 하이라이트)
-    ctx.strokeStyle = "rgba(0,0,0,0.1)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // 5. 숫자 (음각 느낌을 위해 살짝 아래로 배치)
+    // Text
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "bold 28px 'Arial Narrow', sans-serif";
-    
-    // 숫자 그림자 (살짝 파인 느낌)
-    ctx.fillStyle = "rgba(0,0,0,0.15)";
-    ctx.fillText(num, x + w/2 + 0.5, y + h/2 + 1.5);
-
-    // 실제 숫자 색상
-    ctx.fillStyle = color;
-    ctx.fillText(num, x + w/2, y + h/2 + 1);
-
+    ctx.font = `bold ${fontSize}px Arial`;
+    ctx.fillStyle = tile.color;
+    ctx.fillText(tile.num, x + tileW/2, y + tileH/2 + 1);
     ctx.restore();
+}
+
+// 3. 거치대(Rack) 그리기 (두 줄 배치)
+function drawRack() {
+    const { tileW, tileH, padding } = gameState.renderParams;
+    const startY = canvas.height - (tileH * 2.5); // 하단 두 줄 확보
+    const gap = 4;
+
+    let countPerRow = Math.max(10, Math.ceil(gameState.rackTiles.length / 2));
+
+    gameState.rackTiles.forEach((tile, i) => {
+        const row = Math.floor(i / countPerRow);
+        const col = i % countPerRow;
+        const x = padding + col * (tileW + gap);
+        const y = startY + row * (tileH + gap + 5); // 두 번째 줄 간격
+        drawTile(tile, x, y);
+    });
 }
 
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 테스트용 타일 배치
-    draw4DTile(50, 100, "1", "#e53e3e");  // 빨강
-    draw4DTile(110, 100, "10", "#3182ce"); // 파랑
-    draw4DTile(170, 100, "13", "#ed8936"); // 주황
+    drawRack();
+    requestAnimationFrame(render);
 }
 
-window.addEventListener('resize', resize);
-resize();
+// 테스트 데이터 생성 (25장 - 자동으로 두 줄 배치가 되어야 함)
+function initTest() {
+    const colors = ['#e53e3e', '#3182ce', '#ed8936', '#2d3748'];
+    for(let i=1; i<=25; i++) {
+        gameState.rackTiles.push({
+            num: (i % 13) + 1,
+            color: colors[i % 4]
+        });
+    }
+}
+
+window.addEventListener('resize', () => {
+    updateLayout();
+});
+
+initTest();
+updateLayout();
+render();
 </script>
 </body>
 </html>
