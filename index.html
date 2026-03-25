@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Sorting Pro</title>
+    <title>Tile Run - Full Group Control</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Pretendard', sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -32,7 +32,7 @@
 
 <div class="header">
     <h3 style="margin:0; letter-spacing: 2px;">LUMICUBE PUZZLE</h3>
-    <p id="msg">정렬 버튼을 눌러 전략을 세우세요!</p>
+    <p id="msg">거치대에서도 붙어있는 타일은 뭉치로 옮길 수 있어요!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -113,28 +113,21 @@
         return tiles.some(t => !ignoreList.includes(t) && Math.abs(t.x - x) < 20 && Math.abs(t.y - y) < 20);
     }
 
-    // --- 정렬 로직 고도화 ---
     function sortHand(type) {
         let rackTiles = tiles.filter(t => t.place === 'rack');
-        
         if (type === 'color') {
-            // 색상별 정렬: 색상 인덱스 우선 -> 그 다음 숫자 순
             rackTiles.sort((a, b) => {
-                if (a.joker) return 1; if (b.joker) return -1; // 조커는 맨 뒤로
+                if (a.joker) return 1; if (b.joker) return -1;
                 if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
                 return a.num - b.num;
             });
-            showMessage("색상별로 정렬했습니다.");
         } else {
-            // 숫자별 정렬: 숫자 우선 -> 그 다음 색상 순
             rackTiles.sort((a, b) => {
                 if (a.joker) return 1; if (b.joker) return -1;
                 if (a.num !== b.num) return a.num - b.num;
                 return colors.indexOf(a.color) - colors.indexOf(b.color);
             });
-            showMessage("숫자별로 정렬했습니다.");
         }
-
         const cols = Math.floor((canvas.width - 40) / RACK_GRID_X);
         rackTiles.forEach((t, i) => {
             t.x = t.saveX = 20 + (i % cols) * RACK_GRID_X;
@@ -174,19 +167,23 @@
         draggingGroup.forEach(tile => drawTileUI(ctx, tile, true));
     }
 
+    // --- 강화된 뭉치 탐색 (보드 & 거치대 모두 지원) ---
     function getConnectedTiles(startTile, clickX) {
-        if (startTile.place === 'rack') return [startTile];
         const relativeX = clickX - startTile.x;
         const isCenterClick = (relativeX > TILE_W * 0.3 && relativeX < TILE_W * 0.7);
         if (isCenterClick) return [startTile];
+
+        // 그리드 간격 설정 (보드냐 거치대냐에 따라 다름)
+        const gridX = (startTile.place === 'board') ? BOARD_GRID_X : RACK_GRID_X;
 
         let connected = [startTile];
         let queue = [startTile];
         while(queue.length > 0) {
             let curr = queue.shift();
             tiles.forEach(t => {
-                if (t.place === 'board' && !connected.includes(t)) {
-                    if (Math.abs(t.y - curr.y) < 10 && Math.abs(Math.abs(t.x - curr.x) - BOARD_GRID_X) < 10) {
+                if (t.place === startTile.place && !connected.includes(t)) {
+                    // 같은 Y라인에 있고, X축으로 한 칸 거리인 타일들을 뭉치로 인식
+                    if (Math.abs(t.y - curr.y) < 10 && Math.abs(Math.abs(t.x - curr.x) - gridX) < 10) {
                         connected.push(t); queue.push(t);
                     }
                 }
@@ -256,27 +253,21 @@
     function finishTurn() {
         const boardTiles = tiles.filter(t => t.place === 'board');
         const rackTiles = tiles.filter(t => t.place === 'rack');
-
         if (boardTiles.length === 0) { showMessage("보드에 타일이 없습니다."); return; }
         const groups = getGroups(boardTiles);
-        if (!groups) { failTurn("모든 타일은 3장 이상 붙어야 합니다."); return; }
-
+        if (!groups) { failTurn("모든 타일은 3장 이상 붙여야 합니다."); return; }
         let turnScore = 0, allOk = true;
         for (let g of groups) {
             const res = validate(g);
             if (!res.ok) { allOk = false; break; }
             turnScore += res.score;
         }
-
         if (!allOk) { failTurn("잘못된 조합입니다."); return; }
-
         if (!hasRegistered30) {
             if (turnScore < 30) { failTurn(`첫 등록 30점 미달 (${turnScore}점)`); return; }
             hasRegistered30 = true;
         }
-
         boardTiles.forEach(t => { t.saveX = t.x; t.saveY = t.y; });
-        
         if (rackTiles.length === 0) {
             gameActive = false;
             victoryOverlay.style.display = "flex";
