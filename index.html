@@ -3,380 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Professional Tile Run (Rummikub Clone)</title>
+    <title>Tile Run - Phase 1</title>
     <style>
-        body {
-            margin: 0; padding: 0;
-            background-color: #1a1e2a;
-            color: white;
-            overflow: hidden; /* 스크롤 방지 */
-            font-family: 'Pretendard', sans-serif;
-            touch-action: none; /* 브라우저 기본 터치 액션 방지 */
-        }
-        canvas {
-            display: block;
-            margin: 0 auto;
-            cursor: grab;
-        }
-        canvas:active { cursor: grabbing; }
-        .ui-layer {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
-            pointer-events: none;
-        }
-        button {
-            pointer-events: auto;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: bold;
-            border: none;
-            border-radius: 8px;
-            background: #4a5568;
-            color: white;
-            cursor: pointer;
-            box-shadow: 0 4px 0 #2d3748;
-        }
-        button:active { transform: translateY(2px); box-shadow: 0 2px 0 #2d3748; }
-        button.primary { background: #3182ce; box-shadow: 0 4px 0 #2b6cb0; }
-        #msg {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.7);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-        }
+        /* 모바일 최적화: 스크롤 및 선택 방지 */
+        body { margin: 0; padding: 0; background: #1a1e2a; overflow: hidden; touch-action: none; user-select: none; }
+        canvas { display: block; }
     </style>
 </head>
 <body>
-
-<div id="msg">게임을 시작하세요!</div>
-<canvas id="gameCanvas"></canvas>
-
-<div class="ui-layer">
-    <button onclick="game.drawTile()">타일 뽑기</button>
-    <button onclick="game.sortRack('color')">색상 정렬</button>
-    <button onclick="game.sortRack('num')">숫자 정렬</button>
-    <button class="primary" onclick="game.finishTurn()">조합 확정</button>
-</div>
+    <canvas id="gameCanvas"></canvas>
 
 <script>
-/**
- * Rummikub Game Core Logic
- * @author Senior Game Developer
- */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-const CONFIG = {
-    COLS: 20,
-    ROWS: 12, // 상단 8줄 보드, 하단 4줄 거치대 느낌
-    TILE_WIDTH: 45,
-    TILE_HEIGHT: 60,
-    GAP: 5,
-    COLORS: {
-        red: '#e53e3e',
-        yellow: '#ed8936',
-        blue: '#3182ce',
-        black: '#2d3748', // 실제 루미큐브의 주황/검정 대응
-        joker1: '#ff3399',
-        joker2: '#555555'
-    }
-};
-
-class Tile {
-    constructor(id, num, color, isJoker = false) {
-        this.id = id;
-        this.num = num;
-        this.color = color;
-        this.isJoker = isJoker;
-        
-        this.x = 0;
-        this.y = 0;
-        this.gridX = -1;
-        this.gridY = -1;
-        
-        this.saveX = -1; // 롤백용 이전 좌표
-        this.saveY = -1;
-        this.place = 'deck'; // 'board', 'rack', 'deck'
-        this.isFixed = false; // 보드에 안착되어 검증 완료된 상태
-    }
-
-    draw(ctx, isDragging = false) {
-        const { x, y } = this;
-        const w = CONFIG.TILE_WIDTH;
-        const h = CONFIG.TILE_HEIGHT;
-
-        // 3D 입체감 표현
-        ctx.save();
-        if (isDragging) {
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = "rgba(0,0,0,0.5)";
-            ctx.translate(-2, -2);
-        }
-
-        // 타일 베이스
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, 6);
-        ctx.fill();
-
-        // 하단 그림자/두께
-        ctx.strokeStyle = "#cbd5e0";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // 텍스트 출력
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        
-        if (this.isJoker) {
-            ctx.font = "bold 24px Arial";
-            ctx.fillStyle = this.color;
-            ctx.fillText("🤡", x + w/2, y + h/2);
-        } else {
-            ctx.font = "bold 22px Arial";
-            ctx.fillStyle = this.color;
-            ctx.fillText(this.num, x + w/2, y + h/2 + 2);
-        }
-        ctx.restore();
-    }
+// 1. 반응형 설정: 화면 크기가 변해도 꽉 차게
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    draw(); // 크기 변할 때마다 다시 그리기
 }
 
-class Rummikub {
-    constructor() {
-        this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.tiles = [];
-        this.deck = [];
-        this.draggingTiles = []; // 뭉치 이동을 위해 배열로 관리
-        this.offsetX = 0;
-        this.offsetY = 0;
-        
-        this.init();
-        this.bindEvents();
-        this.loop();
-    }
+// 2. 타일 그리기 함수 (전문가 수준의 디테일)
+function drawTile(x, y, num, color) {
+    const w = 45;
+    const h = 60;
+    const radius = 6;
 
-    init() {
-        this.resize();
-        this.createDeck();
-        this.shuffle(this.deck);
-        
-        // 초기 14장 배분
-        for(let i=0; i<14; i++) {
-            this.drawTile();
-        }
-    }
+    ctx.save();
+    // 타일 그림자
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 2;
+    ctx.shadowColor = "rgba(0,0,0,0.3)";
 
-    createDeck() {
-        let id = 0;
-        const colors = ['red', 'yellow', 'blue', 'black'];
-        // 1-13 숫자별 2세트씩
-        for (let set = 0; set < 2; set++) {
-            colors.forEach(color => {
-                for (let num = 1; num <= 13; num++) {
-                    this.deck.push(new Tile(id++, num, CONFIG.COLORS[color]));
-                }
-            });
-        }
-        // 조커 2종
-        this.deck.push(new Tile(id++, 0, CONFIG.COLORS.joker1, true));
-        this.deck.push(new Tile(id++, 0, CONFIG.COLORS.joker2, true));
-    }
+    // 타일 몸체
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, radius);
+    ctx.fill();
 
-    shuffle(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
-        }
-    }
+    // 테두리
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#cbd5e0";
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    drawTile() {
-        if (this.deck.length === 0) return alert("덱에 타일이 없습니다!");
-        const tile = this.deck.pop();
-        tile.place = 'rack';
-        // 거치대 빈자리 찾기 (하단 3단)
-        this.autoPlaceInRack(tile);
-        this.tiles.push(tile);
-    }
-
-    autoPlaceInRack(tile) {
-        for (let r = 9; r < 12; r++) {
-            for (let c = 0; c < CONFIG.COLS; c++) {
-                if (!this.getTileAtGrid(c, r)) {
-                    this.snapToGrid(tile, c, r);
-                    return;
-                }
-            }
-        }
-    }
-
-    snapToGrid(tile, gridX, gridY) {
-        tile.gridX = gridX;
-        tile.gridY = gridY;
-        tile.x = gridX * (CONFIG.TILE_WIDTH + CONFIG.GAP) + 20;
-        tile.y = gridY * (CONFIG.TILE_HEIGHT + CONFIG.GAP) + 20;
-        tile.saveX = tile.gridX;
-        tile.saveY = tile.gridY;
-        tile.place = gridY < 8 ? 'board' : 'rack';
-    }
-
-    getTileAtGrid(gridX, gridY) {
-        return this.tiles.find(t => t.gridX === gridX && t.gridY === gridY && !this.draggingTiles.includes(t));
-    }
-
-    // 핵심: 연결된 뭉치 찾기 알고리즘
-    getConnectedGroup(tile) {
-        if (tile.place !== 'board') return [tile]; // 거치대에서는 개별 이동
-        
-        let group = [tile];
-        // 왼쪽 확인
-        let curr = tile;
-        while (true) {
-            let left = this.getTileAtGrid(curr.gridX - 1, curr.gridY);
-            if (left) { group.push(left); curr = left; }
-            else break;
-        }
-        // 오른쪽 확인
-        curr = tile;
-        while (true) {
-            let right = this.getTileAtGrid(curr.gridX + 1, curr.gridY);
-            if (right) { group.push(right); curr = right; }
-            else break;
-        }
-        return group;
-    }
-
-    bindEvents() {
-        const start = (e) => {
-            const pos = this.getEventPos(e);
-            const target = this.tiles.find(t => 
-                pos.x >= t.x && pos.x <= t.x + CONFIG.TILE_WIDTH &&
-                pos.y >= t.y && pos.y <= t.y + CONFIG.TILE_HEIGHT
-            );
-
-            if (target) {
-                this.draggingTiles = this.getConnectedGroup(target);
-                this.offsetX = pos.x;
-                this.offsetY = pos.y;
-                // 드래그 시 렌더링 순서 최상위로
-                this.draggingTiles.forEach(t => {
-                    this.tiles.splice(this.tiles.indexOf(t), 1);
-                    this.tiles.push(t);
-                });
-            }
-        };
-
-        const move = (e) => {
-            if (this.draggingTiles.length === 0) return;
-            const pos = this.getEventPos(e);
-            const dx = pos.x - this.offsetX;
-            const dy = pos.y - this.offsetY;
-
-            this.draggingTiles.forEach(t => {
-                t.x += dx;
-                t.y += dy;
-            });
-
-            this.offsetX = pos.x;
-            this.offsetY = pos.y;
-        };
-
-        const end = () => {
-            if (this.draggingTiles.length === 0) return;
-
-            this.draggingTiles.forEach(t => {
-                const gx = Math.round((t.x - 20) / (CONFIG.TILE_WIDTH + CONFIG.GAP));
-                const gy = Math.round((t.y - 20) / (CONFIG.TILE_HEIGHT + CONFIG.GAP));
-
-                // 경계 체크 및 겹침 방지
-                if (gx >= 0 && gx < CONFIG.COLS && gy >= 0 && gy < CONFIG.ROWS && !this.getTileAtGrid(gx, gy)) {
-                    this.snapToGrid(t, gx, gy);
-                } else {
-                    // 원래 위치로 복구
-                    this.snapToGrid(t, t.saveX, t.saveY);
-                }
-            });
-
-            this.draggingTiles = [];
-        };
-
-        this.canvas.addEventListener('mousedown', start);
-        window.addEventListener('mousemove', move);
-        window.addEventListener('mouseup', end);
-
-        this.canvas.addEventListener('touchstart', (e) => { e.preventDefault(); start(e.touches[0]); }, {passive: false});
-        window.addEventListener('touchmove', (e) => { e.preventDefault(); move(e.touches[0]); }, {passive: false});
-        window.addEventListener('touchend', end);
-        window.addEventListener('resize', () => this.resize());
-    }
-
-    getEventPos(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    }
-
-    resize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        // 해상도에 따른 타일 크기 자동 조정 로직 추가 가능
-    }
-
-    sortRack(type) {
-        let rackTiles = this.tiles.filter(t => t.place === 'rack');
-        rackTiles.sort((a, b) => {
-            if (type === 'color') {
-                return a.color.localeCompare(b.color) || a.num - b.num;
-            } else {
-                return a.num - b.num || a.color.localeCompare(b.color);
-            }
-        });
-        
-        // 정렬 후 배치
-        rackTiles.forEach((t, i) => {
-            const r = 9 + Math.floor(i / CONFIG.COLS);
-            const c = i % CONFIG.COLS;
-            this.snapToGrid(t, c, r);
-        });
-    }
-
-    finishTurn() {
-        // [알고리즘 전문가 모드] 
-        // 1. 보드 위의 타일들을 행 단위로 그룹핑
-        // 2. 각 그룹이 유효한 Set(Group) 또는 Run인지 확인
-        // 3. 30점 룰(첫 등록) 체크
-        // 4. 실패 시 롤백 로직 실행
-        document.getElementById('msg').innerText = "조합 검증 로직 실행 중... (Phase 4 개발 예정)";
-    }
-
-    loop() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // 배경 그리기
-        this.ctx.fillStyle = "#1a1e2a";
-        this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
-
-        // 영역 구분선 (Board vs Rack)
-        this.ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 8 * (CONFIG.TILE_HEIGHT + CONFIG.GAP) + 10);
-        this.ctx.lineTo(this.canvas.width, 8 * (CONFIG.TILE_HEIGHT + CONFIG.GAP) + 10);
-        this.ctx.stroke();
-
-        // 타일 그리기
-        this.tiles.forEach(t => t.draw(this.ctx, this.draggingTiles.includes(t)));
-        
-        requestAnimationFrame(() => this.loop());
-    }
+    // 숫자 텍스트
+    ctx.fillStyle = color;
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(num, x + w / 2, y + h / 2 + 2);
+    ctx.restore();
 }
 
-const game = new Rummikub();
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 테스트용 타일 몇 개
+    drawTile(50, 50, "7", "#e53e3e");  // 빨강
+    drawTile(105, 50, "8", "#ed8936"); // 주황
+    drawTile(160, 50, "9", "#3182ce"); // 파랑
+}
+
+window.addEventListener('resize', resize);
+resize(); // 초기 실행
 </script>
 </body>
 </html>
