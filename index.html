@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Fixed Group Move</title>
+    <title>Tile Run - Smart Snap</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Pretendard', sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -32,7 +32,7 @@
 
 <div class="header">
     <h3 style="margin:0; letter-spacing: 2px;">LUMICUBE PUZZLE</h3>
-    <p id="msg">뭉치를 옮겨도 대열이 흐트러지지 않습니다!</p>
+    <p id="msg">규칙에 맞지 않는 타일은 옆에 붙지 않고 튕겨 나갑니다!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -186,14 +186,8 @@
                 }
             });
         }
-
-        if (startTile.place === 'rack') {
-            connected.sort((a, b) => a.x - b.x);
-            const check = validate(connected);
-            if (connected.length < 3 || !check.ok) return [startTile];
-        }
-
-        return connected.sort((a, b) => a.x - b.x); // 찢어짐 방지를 위해 정렬하여 반환
+        connected.sort((a, b) => a.x - b.x);
+        return connected;
     }
 
     function onStart(e) {
@@ -224,14 +218,10 @@
         render();
     }
 
-    // --- 💡 핵심 변경: 뭉치 찢어짐 방지 스냅 로직 ---
+    // --- 💡 핵심 변경: 잘못된 결합 방지 스냅 ---
     function onEnd() {
         if (draggingGroup.length === 0) return;
         
-        let canPlace = true;
-        let snapPositions = [];
-
-        // 1. 기준점 잡기: 뭉치의 첫 번째 타일(가장 왼쪽)을 기준으로 스냅 좌표 계산
         let master = draggingGroup[0];
         let masterSnapX, masterSnapY, place;
 
@@ -249,22 +239,34 @@
 
         const gridX = (place === 'board') ? BOARD_GRID_X : RACK_GRID_X;
 
-        // 2. 마스터 기준 나머지 타일들 강제 일렬 배치 확인
+        // 결합 규칙 체크: 왼쪽이나 오른쪽에 타일이 있는 경우, 그들과 합쳤을 때 유효한지 확인
+        if (place === 'board') {
+            // 왼쪽 타일 확인
+            let leftTile = tiles.find(t => !draggingGroup.includes(t) && t.place === 'board' && Math.abs(t.y - masterSnapY) < 10 && Math.abs(t.x - (masterSnapX - gridX)) < 10);
+            if (leftTile) {
+                // 왼쪽 타일이 포함된 전체 그룹을 가져와서 현재 드래그 뭉치와 합쳐봄
+                let leftGroup = getConnectedTiles(leftTile, leftTile.x + TILE_W/2);
+                let combined = [...leftGroup, ...draggingGroup].sort((a,b) => a.x - b.x);
+                if (!validate(combined).ok) {
+                    // 규칙에 어긋나면 한 칸 띄움
+                    masterSnapX += gridX; 
+                }
+            }
+        }
+
+        let snapPositions = [];
+        let canPlace = true;
         for (let i = 0; i < draggingGroup.length; i++) {
             let tx = masterSnapX + (i * gridX);
             let ty = masterSnapY;
-
-            // 보드 밖으로 나가는지 또는 겹치는지 체크
-            if (tx > canvas.width - TILE_W || isOccupied(tx, ty, draggingGroup)) {
-                canPlace = false; break;
-            }
+            if (tx > canvas.width - TILE_W || isOccupied(tx, ty, draggingGroup)) { canPlace = false; break; }
             snapPositions.push({ x: tx, y: ty, place: place });
         }
 
-        // 3. 적용
         draggingGroup.forEach((t, i) => {
             if (canPlace) {
                 t.x = snapPositions[i].x; t.y = snapPositions[i].y; t.place = snapPositions[i].place;
+                t.saveX = t.x; t.saveY = t.y; // 성공적인 이동 후 저장
             } else {
                 t.x = t.saveX; t.y = t.saveY;
             }
@@ -285,7 +287,7 @@
             if (!res.ok) { allOk = false; break; }
             turnScore += res.score;
         }
-        if (!allOk) { failTurn("잘못된 조합입니다."); return; }
+        if (!allOk) { failTurn("잘못된 조합이 보드에 섞여 있습니다."); return; }
         if (!hasRegistered30) {
             if (turnScore < 30) { failTurn(`첫 등록 30점 미달 (${turnScore}점)`); return; }
             hasRegistered30 = true;
@@ -295,7 +297,7 @@
             gameActive = false;
             victoryOverlay.style.display = "flex";
         } else {
-            showMessage("✅ 확정 성공! 남은 타일: " + rackTiles.length);
+            showMessage("✅ 조합 확정! 완벽합니다.");
             render();
         }
     }
@@ -329,8 +331,11 @@
         const tempGroup = [...group].sort((a, b) => a.x - b.x);
         const reals = tempGroup.filter(t => !t.joker);
         if (reals.length === 0) return { ok: true, score: 30 };
+
         const isSameColor = reals.every(t => t.color === reals[0].color);
         const isSameNum = reals.every(t => t.num === reals[0].num);
+
+        // Run 검증
         if (isSameColor) {
             let tempNums = [];
             let firstRealIdx = tempGroup.findIndex(t => !t.joker);
@@ -341,8 +346,15 @@
                 if (!tempGroup[i].joker && tempGroup[i].num !== expected) return { ok: false };
                 tempNums.push(expected);
             }
+            // 중복 숫자 체크 (1,2,3,3 방지)
+            if (new Set(tempNums.size) !== tempNums.length) {
+                 for(let i=0; i<tempGroup.length-1; i++){
+                     if(!tempGroup[i].joker && !tempGroup[i+1].joker && tempGroup[i].num === tempGroup[i+1].num) return {ok:false};
+                 }
+            }
             return { ok: true, score: tempNums.reduce((a,b) => a+b, 0) };
         }
+        // Group 검증
         if (isSameNum) {
             if (tempGroup.length > 4) return { ok: false };
             const usedColors = new Set();
