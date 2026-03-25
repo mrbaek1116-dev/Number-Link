@@ -2,14 +2,35 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Phase 3.2 (Realistic Rack & Snapping)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tile Run - Phase 4 (Landscape & Dynamic Rack)</title>
     <style>
-        body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
-        canvas { display: block; }
+        /* 가로 모드 최적화 */
+        body { 
+            margin: 0; background: #1a1e2a; overflow: hidden; 
+            touch-action: none; user-select: none;
+            display: flex; justify-content: center; align-items: center;
+            width: 100vw; height: 100vh;
+        }
+        canvas { display: block; background: #1a1e2a; }
+        
+        /* 세로 모드 경고 (모바일용) */
+        @media screen and (orientation: portrait) {
+            #orientation-layer { display: flex !important; }
+        }
+        #orientation-layer {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(26, 30, 42, 0.95); z-index: 100;
+            color: white; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; font-family: sans-serif;
+        }
     </style>
 </head>
 <body>
+    <div id="orientation-layer">
+        <div style="font-size: 50px;">🔄</div>
+        <p>기기를 가로로 돌려주세요!<br>가로 모드에서 최적화된 게임입니다.</p>
+    </div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -19,113 +40,105 @@ const ctx = canvas.getContext('2d');
 let gameState = {
     rackTiles: [],
     draggingTile: null,
-    savePos: { x: 0, y: 0, row: 0, col: 0 }, // 롤백용 저장
+    savePos: { x: 0, y: 0, row: 0, col: 0 },
     offset: { x: 0, y: 0 },
     renderParams: {},
-    MAX_RACK_COLS: 20 // 거치대 한 줄당 최대 칸 수
+    // 핵심: 타일 개수에 따라 가변적으로 변하는 설정
+    currentCols: 20 
 };
 
-// 1. 레이아웃 및 거치대 그리드 설정 (이미지 기반)
 function updateLayout() {
+    // 가로 모드 기준 화면 꽉 채우기
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     
-    // 이미지처럼 화면 하단에 위치
-    const cols = gameState.MAX_RACK_COLS;
-    const padding = 10;
-    const availableW = Math.min(canvas.width - padding*2, 1000); // 너무 넓어지지 않게
+    // 타일이 20개가 넘어가면 컬럼 수를 늘림
+    const totalTiles = gameState.rackTiles.length;
+    gameState.currentCols = Math.max(20, Math.ceil(totalTiles / 2)); 
+    
+    const cols = gameState.currentCols;
     const gap = 4;
+    const padding = 20;
 
-    const tileW = (availableW - (cols-1)*gap) / cols;
-    const tileH = tileW * 1.33; // 비율 유지
+    // 화면 너비에 맞춰 타일 크기 계산 (가로가 길어지면 타일은 작아짐)
+    const availableW = canvas.width - (padding * 2);
+    const tileW = Math.min(55, (availableW - (cols - 1) * gap) / cols);
+    const tileH = tileW * 1.35;
 
-    const rackW = availableW;
-    const rackH = tileH * 2 + gap + 15; // 두 줄 + 여유 공간
+    const rackW = cols * tileW + (cols - 1) * gap + 20; // 판의 실제 너비
+    const rackH = tileH * 2 + gap + 25;
 
     gameState.renderParams = {
         tileW, tileH, gap, padding,
-        rackX: (canvas.width - rackW) / 2, // 거치대 자체를 가운데 정렬
-        rackY: canvas.height - rackH - 20, // 하단 마진
+        rackX: (canvas.width - rackW) / 2, // 판을 화면 중앙에
+        rackY: canvas.height - rackH - 10,
         rackW, rackH,
-        fontSize: Math.floor(tileH * 0.45),
-        depth: tileH * 0.08
+        fontSize: Math.floor(tileH * 0.5),
+        depth: tileH * 0.1
     };
 
-    // 데이터 기반 배치 (이미지처럼 왼쪽부터 채움)
+    // 타일 위치 갱신
     gameState.rackTiles.forEach(tile => {
-        if (tile === gameState.draggingTile) return;
-        snapToGrid(tile, tile.col, tile.row);
+        if (tile !== gameState.draggingTile) {
+            snapToGrid(tile, tile.col, tile.row);
+        }
     });
 }
 
-// 2. 타일 그리기 (4D 입체, 이미지 기반 디자인)
-function drawTile(tile) {
-    const { tileW, tileH, fontSize, depth } = gameState.renderParams;
-    const { x, y, num, color } = tile;
-    const r = 3; // 모서리 곡률 약간 줄여서 더 루미큐브답게
-
-    ctx.save();
-    // 드래그 중인 타일은 더 크게 떠오름
-    if (gameState.draggingTile === tile) {
-        ctx.shadowBlur = 20; ctx.shadowOffsetY = 10; ctx.translate(-2, -2);
-    } else {
-        ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
-    }
-    ctx.shadowColor = "rgba(0,0,0,0.6)";
-
-    // [음각 효과 반영된 디자인]
-    // 두께 (옆면)
-    ctx.fillStyle = "#cbd5e0"; 
-    ctx.beginPath(); ctx.roundRect(x, y + depth, tileW, tileH, r); ctx.fill();
-    // 윗면 (순백색)
-    ctx.shadowBlur = 0; ctx.fillStyle = "#ffffff";
-    ctx.beginPath(); ctx.roundRect(x, y, tileW, tileH, r); ctx.fill();
-
-    // 숫자 (이미지처럼 굵고 진하게)
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.font = `bold ${fontSize + 4}px 'Arial Narrow', sans-serif`; 
-    
-    // 음각 느낌을 위한 내부 그림자
-    ctx.fillStyle = "rgba(0,0,0,0.15)";
-    ctx.fillText(num, x + tileW/2, y + tileH/2 + 1.5); // 그림자층
-    ctx.fillStyle = color;
-    ctx.fillText(num, x + tileW/2, y + tileH/2 + 0.5); // 실제 숫자
-    
-    ctx.restore();
+function snapToGrid(tile, col, row) {
+    const p = gameState.renderParams;
+    tile.x = p.rackX + 10 + col * (p.tileW + p.gap);
+    tile.y = p.rackY + 10 + row * (p.tileH + p.gap);
+    tile.col = col;
+    tile.row = row;
 }
 
-// 거치대(나무판) 그리기
 function drawRackPlate() {
     const p = gameState.renderParams;
     ctx.save();
-    // 이미지 같은 고급진 나무색 그라데이션
+    // 나무 판 디자인 (이미지 참고)
     const grad = ctx.createLinearGradient(p.rackX, p.rackY, p.rackX, p.rackY + p.rackH);
-    grad.addColorStop(0, "#d2b48c"); // 밝은 탄
-    grad.addColorStop(1, "#8b4513"); // 어두운 탄
+    grad.addColorStop(0, "#d2b48c"); 
+    grad.addColorStop(0.5, "#a0522d");
+    grad.addColorStop(1, "#5d2e0a");
+    
+    ctx.shadowColor = "black"; ctx.shadowBlur = 10;
     ctx.fillStyle = grad;
-    // 거치대 몸체
-    ctx.beginPath(); ctx.roundRect(p.rackX, p.rackY, p.rackW, p.rackH, 6); ctx.fill();
-    // 이미지처럼 가운데 Rummikub 로고 (임시)
-    ctx.fillStyle = "rgba(0,0,0,0.2)";
-    ctx.font = "italic bold 18px Arial"; ctx.textAlign = "center";
-    ctx.fillText("Rummikub", p.rackX + p.rackW/2, p.rackY + p.rackH - 8);
+    ctx.beginPath();
+    ctx.roundRect(p.rackX, p.rackY, p.rackW, p.rackH, 8);
+    ctx.fill();
     ctx.restore();
 }
 
-// 타일을 그리드 좌표에 딱 붙이는 함수
-function snapToGrid(tile, col, row) {
+function drawTile(tile) {
     const p = gameState.renderParams;
-    tile.x = p.rackX + col * (p.tileW + p.gap);
-    tile.y = p.rackY + row * (p.tileH + p.gap);
-    tile.col = col; tile.row = row;
+    const { x, y, num, color } = tile;
+    
+    ctx.save();
+    if (gameState.draggingTile === tile) {
+        ctx.shadowBlur = 15; ctx.shadowOffsetY = 10;
+    } else {
+        ctx.shadowBlur = 3; ctx.shadowOffsetY = 2;
+    }
+    
+    // 4D 효과 (옆면)
+    ctx.fillStyle = "#cccccc";
+    ctx.beginPath(); ctx.roundRect(x, y + p.depth, p.tileW, p.tileH, 4); ctx.fill();
+    
+    // 윗면
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "white";
+    ctx.beginPath(); ctx.roundRect(x, y, p.tileW, p.tileH, 4); ctx.fill();
+    
+    // 숫자
+    ctx.font = `bold ${p.fontSize}px Arial`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = color;
+    ctx.fillText(num, x + p.tileW/2, y + p.tileH/2 + 2);
+    ctx.restore();
 }
 
-// 해당 칸에 타일이 있는지 확인
-function getTileAtGrid(col, row) {
-    return gameState.rackTiles.find(t => t !== gameState.draggingTile && t.col === col && t.row === row);
-}
-
-// 포인터 좌표
+// --- 이벤트 처리 (Phase 3와 동일하나 20칸 대응 추가) ---
 function getPointerPos(e) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -133,101 +146,67 @@ function getPointerPos(e) {
     return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
-// 3. 이벤트 (핵심: 드롭 시 빈칸 탐색 및 겹침 방지)
-function onStart(e) {
+canvas.addEventListener('mousedown', (e) => {
     const pos = getPointerPos(e);
     const p = gameState.renderParams;
-    // 타일 선택 (역순)
     for (let i = gameState.rackTiles.length - 1; i >= 0; i--) {
         const t = gameState.rackTiles[i];
         if (pos.x >= t.x && pos.x <= t.x + p.tileW && pos.y >= t.y && pos.y <= t.y + p.tileH) {
             gameState.draggingTile = t;
-            // 원래 위치 저장 (겹치거나 실패 시 복구용)
-            gameState.savePos = { x: t.x, y: t.y, row: t.row, col: t.col };
+            gameState.savePos = { col: t.col, row: t.row };
             gameState.offset = { x: pos.x - t.x, y: pos.y - t.y };
-            // 최상위로 올림
             gameState.rackTiles.splice(i, 1);
             gameState.rackTiles.push(t);
             break;
         }
     }
-}
+});
 
-function onMove(e) {
+window.addEventListener('mousemove', (e) => {
     if (!gameState.draggingTile) return;
     const pos = getPointerPos(e);
     gameState.draggingTile.x = pos.x - gameState.offset.x;
     gameState.draggingTile.y = pos.y - gameState.offset.y;
-}
+});
 
-function onEnd() {
+window.addEventListener('mouseup', () => {
     if (!gameState.draggingTile) return;
     const t = gameState.draggingTile;
     const p = gameState.renderParams;
 
-    // 마우스가 거치대 위에 있을 때만 그리드 계산
-    if (t.x + p.tileW/2 > p.rackX && t.x + p.tileW/2 < p.rackX + p.rackW &&
-        t.y + p.tileH/2 > p.rackY && t.y + p.tileH/2 < p.rackY + p.rackH) {
-        
-        // 1. 가장 가까운 그리드 계산
-        const col = Math.round((t.x - p.rackX) / (p.tileW + p.gap));
-        const row = Math.round((t.y - p.rackY) / (p.tileH + p.gap));
+    const col = Math.round((t.x - (p.rackX + 10)) / (p.tileW + p.gap));
+    const row = Math.round((t.y - (p.rackY + 10)) / (p.tileH + p.gap));
 
-        // 2. [겹침 방지 알고리즘]
-        if (col >= 0 && col < gameState.MAX_RACK_COLS && row >= 0 && row < 2 && !getTileAtGrid(col, row)) {
-            // 빈 칸이면 성공
-            snapToGrid(t, col, row);
-        } else {
-            // 이미 누가 있거나 범위 밖이면 실패 -> 원래 자리 복구
-            snapToGrid(t, gameState.savePos.col, gameState.savePos.row);
-        }
+    const isOverlap = gameState.rackTiles.find(ot => ot !== t && ot.col === col && ot.row === row);
+
+    if (col >= 0 && col < gameState.currentCols && row >= 0 && row < 2 && !isOverlap) {
+        snapToGrid(t, col, row);
     } else {
-        // 거치대 밖에 놓았을 때도 복구 (Phase 4에서 보드 안착으로 바뀜)
         snapToGrid(t, gameState.savePos.col, gameState.savePos.row);
     }
-
     gameState.draggingTile = null;
-}
-
-canvas.addEventListener('mousedown', onStart);
-window.addEventListener('mousemove', onMove);
-window.addEventListener('mouseup', onEnd);
-canvas.addEventListener('touchstart', (e) => { e.preventDefault(); onStart(e); }, {passive: false});
-window.addEventListener('touchmove', (e) => { e.preventDefault(); onMove(e); }, {passive: false});
-window.addEventListener('touchend', onEnd);
+});
 
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawRackPlate(); // 거치대 먼저
+    drawRackPlate();
     gameState.rackTiles.forEach(drawTile);
     requestAnimationFrame(render);
 }
 
-// 초기 데이터 배치 (이미지처럼 왼쪽부터 채움)
-function initTest() {
-    // 이미지 속 타일들: {숫자, 색상}
-    const rawTiles = [
-        {n:1, c:'blue'}, {n:13, c:'blue'}, {n:9, c:'red'}, {n:2, c:'red'}, {n:9, c:'black'},
-        {n:'🤡', c:'#ff3399'}, {n:13, c:'black'}, {n:8, c:'red'}, {n:7, c:'orange'}, {n:4, c:'red'},
-        {n:13, c:'red'}, {n:11, c:'orange'}, {n:3, c:'blue'}, {n:1, c:'red'}
-    ];
-    // 컬러 맵핑
-    const colors = { red: '#e53e3e', blue: '#3182ce', orange: '#ed8936', black: '#2d3748', '🤡':'#ff3399' };
-
-    rawTiles.forEach((tile, i) => {
-        gameState.rackTiles.push({
-            num: tile.n,
-            color: colors[tile.c] || tile.c,
-            row: Math.floor(i / gameState.MAX_RACK_COLS),
-            col: i % gameState.MAX_RACK_COLS,
-            x: 0, y: 0 // updateLayout에서 snapToGrid로 배치됨
-        });
+// 테스트 데이터 (22개 생성 -> 판이 길어져야 함)
+const colors = ['#e53e3e', '#3182ce', '#ed8936', '#2d3748'];
+for(let i=0; i<22; i++) {
+    gameState.rackTiles.push({
+        num: (i % 13) + 1,
+        color: colors[i % 4],
+        col: i % 20, // 임시 배치
+        row: Math.floor(i / 20)
     });
 }
 
 window.addEventListener('resize', updateLayout);
-initTest(); // 테스트 데이터 먼저 생성
-updateLayout(); // 그 후 레이아웃 계산
+updateLayout();
 render();
 </script>
 </body>
