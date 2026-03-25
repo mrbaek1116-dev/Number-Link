@@ -3,40 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LumiPuzzle - Universal Mobile</title>
+    <title>LumiPuzzle - Ultimate Fixed</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
         
-        /* 하단 UI 바: 높이를 고정하고 레이어를 높임 */
+        /* 하단 UI 바 */
         .ui-container { 
             position: absolute; bottom: 0; width: 100%; height: 70px; 
-            background: #000; display: flex; justify-content: space-around; 
-            align-items: center; z-index: 1000; border-top: 1px solid #444;
+            background: #0b0d12; display: flex; justify-content: space-around; 
+            align-items: center; z-index: 1000; border-top: 2px solid #2c3e50;
         }
         button { 
-            padding: 10px 14px; font-size: 14px; background: #34495e; color: white; 
+            padding: 10px 16px; font-size: 14px; background: #34495e; color: white; 
             border: none; border-radius: 8px; font-weight: bold; cursor: pointer;
         }
         .btn-draw { 
-            background: #d35400; width: 54px; height: 54px; border-radius: 50%; 
-            font-size: 24px; box-shadow: 0 0 15px rgba(211, 84, 0, 0.5);
+            background: #d35400; width: 55px; height: 55px; border-radius: 50%; 
+            font-size: 26px; border: 3px solid #e67e22; margin-top: -30px;
         }
-        .btn-complete { background: #27ae60; }
+        .btn-complete { background: #27ae60; border: 2px solid #fff; }
 
-        #msg { position: absolute; top: 15px; width: 100%; text-align: center; pointer-events: none; z-index: 10; font-weight: bold; color: #ffeb3b; }
+        #msg { position: absolute; top: 15px; width: 100%; text-align: center; pointer-events: none; z-index: 10; font-weight: bold; color: #ffeb3b; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
-<div id="msg">조합을 완성하세요!</div>
+<div id="msg">루미큐브 규칙에 맞춰 타일을 놓으세요!</div>
 <canvas id="gameCanvas"></canvas>
 
 <div class="ui-container">
     <button onclick="sortHand('color')">색상별</button>
     <button onclick="sortHand('number')">숫자별</button>
     <button class="btn-draw" onclick="drawOneTile()">+</button>
-    <button class="btn-complete" onclick="finishTurn()">확정</button>
+    <button class="btn-complete" onclick="finishTurn()">조합 확정</button>
     <button onclick="resetGame()" style="background:#7f8c8d;">리셋</button>
 </div>
 
@@ -50,25 +50,26 @@
     let draggingGroup = []; 
     let startX, startY;
     let hasRegistered30 = false;
+    let UI_HEIGHT = 70;
 
-    // --- 기기 크기에 따른 동적 수치 ---
-    let TILE_W, TILE_H, BOARD_TOP, RACK_START_Y, UI_HEIGHT = 70;
-    let GRID_X, GRID_Y;
+    // 기기별 동적 수치
+    let TILE_W, TILE_H, BOARD_TOP, RACK_Y, GRID_X, GRID_Y;
 
     function initMetrics() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // 화면 너비에 맞춰 타일 크기 자동 조절 (한 줄에 약 12~14개 기준)
-        TILE_W = Math.floor(canvas.width / 13);
+        // 타일 크기 제한 (PC에서 너무 커지는 것 방지)
+        let idealW = Math.floor(canvas.width / 14);
+        TILE_W = Math.min(idealW, 55); // 최대 너비 55px 제한
         TILE_H = Math.floor(TILE_W * 1.35);
         
-        BOARD_TOP = 50;
-        // 거치대 시작 높이: 하단 UI 높이와 타일 2단 높이를 고려하여 계산
-        RACK_START_Y = canvas.height - UI_HEIGHT - (TILE_H * 2) - 30;
+        BOARD_TOP = 60;
+        GRID_X = TILE_W + 5;
+        GRID_Y = TILE_H + 8;
         
-        GRID_X = TILE_W + 4;
-        GRID_Y = TILE_H + 6;
+        // 거치대 위치 (UI 위로 2단 확보)
+        RACK_Y = canvas.height - UI_HEIGHT - (GRID_Y * 2) - 20;
         
         reorderRack();
     }
@@ -77,7 +78,7 @@
 
     function resetGame() {
         tiles = []; pool = []; hasRegistered30 = false;
-        const colors = ['#3498db', '#e74c3c', '#f1c40f', '#ecf0f1']; // 파, 빨, 노, 흰(검정대용)
+        const colors = ['#3498db', '#e74c3c', '#f1c40f', '#ecf0f1']; // 파, 빨, 노, 흰
         for (let s = 0; s < 2; s++) {
             colors.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
         }
@@ -93,20 +94,20 @@
         if (pool.length === 0) return;
         let t = pool.pop();
         t.place = 'rack';
+        t.isNew = true; // 새로 뽑은 타일 표시
         tiles.push(t);
         reorderRack();
-        if(!isInit) { render(); }
+        if(!isInit) render();
     }
 
     function reorderRack() {
         let rackTiles = tiles.filter(t => t.place === 'rack');
-        // 거치대 타일 배치 (화면 너비를 넘어가면 다음 줄로)
         const itemsPerRow = Math.floor((canvas.width - 20) / GRID_X);
         rackTiles.forEach((t, i) => {
             const row = Math.floor(i / itemsPerRow);
             const col = i % itemsPerRow;
             t.x = t.saveX = 10 + col * GRID_X;
-            t.y = t.saveY = RACK_START_Y + row * GRID_Y;
+            t.y = t.saveY = RACK_Y + row * GRID_Y;
         });
     }
 
@@ -123,10 +124,11 @@
     }
 
     function drawTileUI(ctx, t, isDrag) {
-        const r = 4;
+        const r = 5;
+        // 타일 본체
         ctx.fillStyle = "#ffffff";
         ctx.beginPath(); ctx.roundRect(t.x, t.y, TILE_W, TILE_H, r); ctx.fill();
-        
+        // 테두리
         ctx.strokeStyle = isDrag ? "#3498db" : "#bdc3c7";
         ctx.lineWidth = isDrag ? 3 : 1;
         ctx.stroke();
@@ -143,22 +145,21 @@
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // 보드 배경
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(5, BOARD_TOP, canvas.width - 10, RACK_START_Y - BOARD_TOP - 10);
+        // 보드 영역 배경
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.fillRect(0, BOARD_TOP, canvas.width, RACK_Y - BOARD_TOP - 10);
 
-        // 거치대 배경 (나무느낌 오렌지)
-        ctx.fillStyle = "#e67e22";
-        ctx.fillRect(0, RACK_START_Y - 10, canvas.width, canvas.height - RACK_START_Y - UI_HEIGHT + 10);
+        // 거치대 영역 배경
+        ctx.fillStyle = "#d35400";
+        ctx.fillRect(0, RACK_Y - 10, canvas.width, canvas.height - RACK_Y - UI_HEIGHT + 10);
 
         tiles.filter(t => !draggingGroup.includes(t)).forEach(tile => drawTileUI(ctx, tile, false));
         draggingGroup.forEach(tile => drawTileUI(ctx, tile, true));
     }
 
-    function getValidDraggingGroup(startTile, clickX) {
+    function getConnectedTiles(startTile, clickX) {
         const relX = clickX - startTile.x;
-        // 타일의 아주 사이드를 눌렀을 때만 뭉치 이동 작동
-        if (relX > TILE_W * 0.2 && relX < TILE_W * 0.8) return [startTile];
+        if (relX > TILE_W * 0.25 && relX < TILE_W * 0.75) return [startTile];
 
         let connected = [startTile];
         let queue = [startTile];
@@ -172,26 +173,19 @@
                 }
             });
         }
-        
-        // 거치대에서는 실제 세트 규칙이 맞아야 뭉치로 인정
-        if (startTile.place === 'rack') {
-            connected.sort((a,b) => a.x - b.x);
-            if (connected.length < 3 || !validate(connected).ok) return [startTile];
-        }
         return connected.sort((a,b) => a.x - b.x);
     }
 
     function onStart(e) {
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        // UI 바 클릭 방지
         if (y > canvas.height - UI_HEIGHT) return;
 
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
                 startX = x; startY = y;
-                draggingGroup = getValidDraggingGroup(t, x);
+                draggingGroup = getConnectedTiles(t, x);
                 draggingGroup.forEach(dt => {
                     tiles.push(tiles.splice(tiles.indexOf(dt), 1)[0]);
                     dt.initX = dt.x; dt.initY = dt.y;
@@ -204,9 +198,10 @@
     function onMove(e) {
         if (draggingGroup.length === 0) return;
         const ev = e.touches ? e.touches[0] : e;
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        draggingGroup.forEach(t => { t.x = t.initX + dx; t.y = t.initY + dy; });
+        draggingGroup.forEach(t => { 
+            t.x = t.initX + (ev.clientX - startX); 
+            t.y = t.initY + (ev.clientY - startY); 
+        });
         render();
     }
 
@@ -215,54 +210,116 @@
         let master = draggingGroup[0];
         let mX, mY, p;
 
-        if (master.y < RACK_START_Y - 20) {
+        if (master.y < RACK_Y - 20) {
             mX = Math.round((master.x - 10) / GRID_X) * GRID_X + 10;
             mY = Math.round((master.y - BOARD_TOP) / GRID_Y) * GRID_Y + BOARD_TOP;
             p = 'board';
         } else {
-            let row = Math.round((master.y - RACK_START_Y) / GRID_Y);
+            let row = Math.round((master.y - RACK_Y) / GRID_Y);
             mX = Math.round((master.x - 10) / GRID_X) * GRID_X + 10;
-            mY = RACK_START_Y + Math.max(0, Math.min(row, 1)) * GRID_Y;
+            mY = RACK_Y + Math.max(0, Math.min(row, 1)) * GRID_Y;
             p = 'rack';
         }
 
         draggingGroup.forEach((t, i) => {
-            t.x = t.saveX = mX + (i * GRID_X);
-            t.y = t.saveY = mY;
+            t.x = mX + (i * GRID_X);
+            t.y = mY;
             t.place = p;
         });
         draggingGroup = []; render();
     }
 
+    // --- 💡 철저한 루미큐브 검증 엔진 ---
     function validate(group) {
-        if (group.length === 0) return { ok: false };
+        if (group.length < 3) return { ok: false }; // 3장 미만 무조건 실패
+        
         const g = [...group].sort((a,b) => a.x - b.x);
         const reals = g.filter(t => !t.joker);
-        if (reals.length === 0) return { ok: true, score: 30 };
-        const isRun = reals.every(t => t.color === reals[0].color);
-        const isSet = reals.every(t => t.num === reals[0].num);
+        if (reals.length === 0) return { ok: true, score: 30 }; // 조커뭉치(특수케이스)
+
+        const isRun = reals.every(t => t.color === reals[0].color); // 같은 색
+        const isSet = reals.every(t => t.num === reals[0].num); // 같은 숫자
+
         if (isRun) {
-            let firstIdx = g.findIndex(t => !t.joker);
-            let start = g[firstIdx].num - firstIdx;
+            let firstRealIdx = g.findIndex(t => !t.joker);
+            let startValue = g[firstRealIdx].num - firstRealIdx;
             for(let i=0; i<g.length; i++) {
-                let expect = start + i;
-                if (expect < 1 || expect > 13 || (!g[i].joker && g[i].num !== expect)) return { ok: false };
+                let expect = startValue + i;
+                if (expect < 1 || expect > 13) return { ok: false };
+                if (!g[i].joker && g[i].num !== expect) return { ok: false };
             }
-            return { ok: true, score: 30 };
+            let score = (startValue + startValue + g.length - 1) * g.length / 2;
+            return { ok: true, score: score };
         }
+        
         if (isSet) {
             if (g.length > 4) return { ok: false };
-            const uC = new Set();
-            for (let t of reals) { if (uC.has(t.color)) return { ok: false }; uC.add(t.color); }
-            return { ok: true, score: 30 };
+            const colorsSeen = new Set();
+            for (let t of reals) {
+                if (colorsSeen.has(t.color)) return { ok: false }; // 같은 색 중복 안됨
+                colorsSeen.add(t.color);
+            }
+            return { ok: true, score: reals[0].num * g.length };
         }
         return { ok: false };
     }
 
     function finishTurn() {
+        const boardTiles = tiles.filter(t => t.place === 'board');
+        if (boardTiles.length === 0) {
+            msgArea.innerText = "보드에 타일이 없습니다.";
+            return;
+        }
+
+        // 보드 위의 모든 그룹 추출
+        boardTiles.sort((a,b) => a.y === b.y ? a.x - b.x : a.y - b.y);
+        let groups = [], cur = [];
+        for (let i=0; i<boardTiles.length; i++) {
+            let t = boardTiles[i];
+            if (cur.length > 0) {
+                let last = cur[cur.length-1];
+                if (t.y !== last.y || Math.abs(t.x - (last.x + GRID_X)) > 10) {
+                    groups.push(cur); cur = [];
+                }
+            }
+            cur.push(t);
+        }
+        if (cur.length > 0) groups.push(cur);
+
+        let turnScore = 0;
+        for (let g of groups) {
+            let res = validate(g);
+            if (!res.ok) {
+                failAction("조합이 규칙에 맞지 않습니다! (3장 미만 혹은 잘못된 배열)");
+                return;
+            }
+            turnScore += res.score;
+        }
+
+        if (!hasRegistered30) {
+            if (turnScore < 30) {
+                failAction(`첫 등록은 30점 이상이어야 합니다! (현재 ${turnScore}점)`);
+                return;
+            }
+            hasRegistered30 = true;
+        }
+
+        // 확정 성공
         tiles.forEach(t => { t.saveX = t.x; t.saveY = t.y; });
-        msgArea.innerText = "조합 확정 성공!";
+        msgArea.innerText = "✅ 조합 확정 성공!";
         render();
+    }
+
+    function failAction(reason) {
+        msgArea.innerText = "❌ " + reason;
+        // 회수 로직: 이전 saveX, saveY로 복구
+        tiles.forEach(t => { 
+            t.x = t.saveX; 
+            t.y = t.saveY; 
+            if (t.y >= RACK_Y - 20) t.place = 'rack';
+            else t.place = 'board';
+        });
+        setTimeout(render, 600);
     }
 
     initMetrics();
