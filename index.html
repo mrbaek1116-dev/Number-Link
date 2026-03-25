@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Octagon Pro</title>
+    <title>Tile Run - Realistic 4D Tile</title>
     <style>
         body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
         canvas { display: block; }
@@ -22,46 +22,70 @@ function resize() {
     render();
 }
 
-function drawOctagon(ctx, x, y, w, h, b) {
-    ctx.beginPath();
-    ctx.moveTo(x + b, y);
-    ctx.lineTo(x + w - b, y);
-    ctx.lineTo(x + w, y + b);
-    ctx.lineTo(x + w, y + h - b);
-    ctx.lineTo(x + w - b, y + h);
-    ctx.lineTo(x + b, y + h);
-    ctx.lineTo(x, y + h - b);
-    ctx.lineTo(x, y + b);
-    ctx.closePath();
-}
+/**
+ * 실물 루미큐브 타일처럼 두께감이 느껴지는 4D 사각형 렌더링
+ */
+function draw4DTile(x, y, num, color) {
+    const w = 45;      // 타일 너비
+    const h = 60;      // 타일 높이
+    const r = 4;       // 모서리 곡률
+    const depth = 5;   // 타일의 두께 (이게 4D 느낌을 줌)
 
-function drawProTile(x, y, num, color) {
-    const w = 45; const h = 60; const b = 8; const t = 4;
     ctx.save();
-    // Shadow
+
+    // 1. 가장 밑바닥 그림자 (바닥에 놓인 느낌)
     ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 6; ctx.shadowOffsetY = 3;
-    // Side
-    ctx.fillStyle = "#cbd5e0";
-    drawOctagon(ctx, x, y + t, w, h, b); ctx.fill();
-    // Top
-    ctx.shadowColor = "transparent";
-    ctx.fillStyle = "#ffffff";
-    drawOctagon(ctx, x, y, w, h, b); ctx.fill();
-    // Text
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.font = "bold 26px Arial";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+
+    // 2. 타일의 두께 부분 (옆면/밑면 - 조금 더 어두운 아이보리)
+    ctx.fillStyle = "#d9d9d9"; 
+    ctx.beginPath();
+    ctx.roundRect(x, y + depth, w, h, r);
+    ctx.fill();
+
+    // 3. 타일의 윗면 (실제 숫자가 적히는 곳 - 밝은 흰색/아이보리)
+    ctx.shadowBlur = 0; // 윗면 그릴 땐 그림자 제거
+    ctx.shadowOffsetY = 0;
+    
+    // 약간의 그라데이션으로 플라스틱 질감 추가
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(1, "#f0f0f0");
+    
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fill();
+
+    // 4. 테두리 (미세한 하이라이트)
+    ctx.strokeStyle = "rgba(0,0,0,0.1)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 5. 숫자 (음각 느낌을 위해 살짝 아래로 배치)
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 28px 'Arial Narrow', sans-serif";
+    
+    // 숫자 그림자 (살짝 파인 느낌)
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.fillText(num, x + w/2 + 0.5, y + h/2 + 1.5);
+
+    // 실제 숫자 색상
     ctx.fillStyle = color;
     ctx.fillText(num, x + w/2, y + h/2 + 1);
+
     ctx.restore();
 }
 
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // 테스트: 연속된 타일 배치
-    drawProTile(50, 100, "10", "#e53e3e");
-    drawProTile(100, 100, "11", "#e53e3e");
-    drawProTile(150, 100, "12", "#e53e3e");
+    
+    // 테스트용 타일 배치
+    draw4DTile(50, 100, "1", "#e53e3e");  // 빨강
+    draw4DTile(110, 100, "10", "#3182ce"); // 파랑
+    draw4DTile(170, 100, "13", "#ed8936"); // 주황
 }
 
 window.addEventListener('resize', resize);
