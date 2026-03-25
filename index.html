@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Phase 4.1 (Force Landscape & Smart Grid)</title>
+    <title>Tile Run - Phase 4.2 (Clean Layout)</title>
     <style>
         body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
         canvas { display: block; }
@@ -25,46 +25,33 @@ let gameState = {
 };
 
 function updateLayout() {
-    // 1. [강제 가로 시스템] 화면이 세로여도 가로 길이를 기준으로 좌표계 설정
-    const isPortrait = window.innerHeight > window.innerWidth;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // 실제 게임 가로 폭(W)과 세로 폭(H) 정의
-    const gameW = canvas.width;
-    const gameH = canvas.height;
-
-    // 2. [스마트 그리드 알고리즘]
     const n = gameState.rackTiles.length;
-    let cols = 10; // 기본 10칸
-    let rows = 1;  // 기본 1줄
-
-    if (n > 10 && n <= 20) {
-        rows = 2; // 11~20개는 2줄
-    } else if (n > 20) {
-        rows = 2;
-        cols = Math.ceil(n / 2); // 20개 넘으면 판이 옆으로 길어짐
-    }
+    let cols = Math.max(10, n > 20 ? Math.ceil(n / 2) : 10);
+    let rows = n > 10 ? 2 : 1;
 
     const padding = 20;
-    const gap = 4;
-    // 판이 길어짐에 따라 타일 크기 자동 축소 (압축 형식)
-    let tileW = Math.min(60, (gameW - padding * 2) / cols - gap);
+    const hGap = 4; // 가로 간격
+    const vGap = 12; // 세로 간격 (위아래 겹침 방지를 위해 더 넓게 설정)
+
+    let tileW = Math.min(55, (canvas.width - padding * 2) / cols - hGap);
     let tileH = tileW * 1.35;
     
-    const rackW = cols * (tileW + gap) + 20;
-    const rackH = rows * (tileH + gap) + 25;
+    // 거치대 크기 계산 (타일이 들어갈 실제 공간 + 내부 여백)
+    const rackW = cols * (tileW + hGap) + 20;
+    const rackH = rows * (tileH + vGap) + 20;
 
     gameState.renderParams = {
-        tileW, tileH, gap, rows, cols,
-        rackX: (gameW - rackW) / 2,
-        rackY: gameH - rackH - 10,
+        tileW, tileH, hGap, vGap, rows, cols,
+        rackX: (canvas.width - rackW) / 2,
+        rackY: canvas.height - rackH - 15,
         rackW, rackH,
         fontSize: Math.floor(tileH * 0.5),
-        depth: tileH * 0.1
+        depth: tileH * 0.08
     };
 
-    // 위치 갱신
     gameState.rackTiles.forEach(tile => {
         if (tile !== gameState.draggingTile) snapToGrid(tile, tile.col, tile.row);
     });
@@ -72,15 +59,16 @@ function updateLayout() {
 
 function snapToGrid(tile, col, row) {
     const p = gameState.renderParams;
-    tile.x = p.rackX + 10 + col * (p.tileW + p.gap);
-    tile.y = p.rackY + 10 + row * (p.tileH + p.gap);
+    // 10px는 거치대 내부의 미세 여백
+    tile.x = p.rackX + 10 + col * (p.tileW + p.hGap);
+    tile.y = p.rackY + 10 + row * (p.tileH + p.vGap);
     tile.col = col; tile.row = row;
 }
 
 function draw4DTile(tile) {
     const p = gameState.renderParams;
     const { x, y, num, color } = tile;
-    const r = 4;
+    const r = 3;
 
     ctx.save();
     if (gameState.draggingTile === tile) {
@@ -88,15 +76,17 @@ function draw4DTile(tile) {
     } else {
         ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
     }
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
+    ctx.shadowColor = "rgba(0,0,0,0.4)";
 
-    // 측면
+    // 옆면 (두께) - 위아래 겹침을 방지하기 위해 윗면보다 약간 작게 그리거나 간격 조절
     ctx.fillStyle = "#cbd5e0";
     ctx.beginPath(); ctx.roundRect(x, y + p.depth, p.tileW, p.tileH, r); ctx.fill();
+    
     // 윗면
     ctx.shadowBlur = 0;
     ctx.fillStyle = "white";
     ctx.beginPath(); ctx.roundRect(x, y, p.tileW, p.tileH, r); ctx.fill();
+    
     // 숫자
     ctx.font = `bold ${p.fontSize}px Arial`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -111,11 +101,13 @@ function drawRack() {
     const grad = ctx.createLinearGradient(p.rackX, p.rackY, p.rackX, p.rackY + p.rackH);
     grad.addColorStop(0, "#d2b48c"); grad.addColorStop(1, "#8b4513");
     ctx.fillStyle = grad;
+    // 거치대 판 자체의 입체감 추가
+    ctx.shadowBlur = 10; ctx.shadowColor = "black";
     ctx.beginPath(); ctx.roundRect(p.rackX, p.rackY, p.rackW, p.rackH, 8); ctx.fill();
     ctx.restore();
 }
 
-// 드래그 로직 (이전과 동일하나 콜백 시 그리드 체크 강화)
+// 이벤트 로직
 function getPos(e) {
     const rect = canvas.getBoundingClientRect();
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -150,8 +142,8 @@ window.addEventListener('mouseup', () => {
     if (!gameState.draggingTile) return;
     const t = gameState.draggingTile;
     const p = gameState.renderParams;
-    const col = Math.round((t.x - (p.rackX + 10)) / (p.tileW + p.gap));
-    const row = Math.round((t.y - (p.rackY + 10)) / (p.tileH + p.gap));
+    const col = Math.round((t.x - (p.rackX + 10)) / (p.tileW + p.hGap));
+    const row = Math.round((t.y - (p.rackY + 10)) / (p.tileH + p.vGap));
     const isOverlap = gameState.rackTiles.find(ot => ot !== t && ot.col === col && ot.row === row);
 
     if (col >= 0 && col < p.cols && row >= 0 && row < p.rows && !isOverlap) {
@@ -171,12 +163,12 @@ function render() {
     requestAnimationFrame(render);
 }
 
-// [테스트 세팅] 타일 22개 생성
+// 테스트 데이터 (22개)
 const colors = ['#e53e3e', '#3182ce', '#ed8936', '#2d3748'];
 for(let i=0; i<22; i++) {
     gameState.rackTiles.push({
         num: (i % 13) + 1, color: colors[i % 4],
-        col: i % 11, row: Math.floor(i / 11) // 초기 11개씩 2줄 배치 테스트
+        col: i % 11, row: Math.floor(i / 11)
     });
 }
 
