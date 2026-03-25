@@ -3,14 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Phase 4.2 (Clean Layout)</title>
+    <title>Tile Run - Absolute Landscape</title>
     <style>
-        body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
-        canvas { display: block; }
+        body { 
+            margin: 0; background: #1a1e2a; overflow: hidden; 
+            touch-action: none; width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+        }
+        /* 핵심: 화면 방향에 따라 캔버스를 강제 회전 */
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        @media screen and (orientation: portrait) {
+            #gameCanvas {
+                transform: rotate(90deg);
+                transform-origin: center;
+                /* 세로일 때 가로/세로 길이를 뒤바꿈 */
+                width: 100vh;
+                height: 100vw;
+            }
+        }
+        canvas { display: block; background: #1a1e2a; }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <div id="container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -25,31 +46,41 @@ let gameState = {
 };
 
 function updateLayout() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // 실제 브라우저의 크기
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    
+    // 게임 내부에서 사용할 논리적 가로/세로 (무조건 가로 기준)
+    const isPortrait = winH > winW;
+    const gameW = isPortrait ? winH : winW;
+    const gameH = isPortrait ? winW : winH;
 
+    canvas.width = gameW;
+    canvas.height = gameH;
+
+    // --- 기존의 스마트 그리드 로직 ---
     const n = gameState.rackTiles.length;
     let cols = Math.max(10, n > 20 ? Math.ceil(n / 2) : 10);
     let rows = n > 10 ? 2 : 1;
 
     const padding = 20;
-    const hGap = 4; // 가로 간격
-    const vGap = 12; // 세로 간격 (위아래 겹침 방지를 위해 더 넓게 설정)
+    const hGap = 4;
+    const vGap = 12;
 
-    let tileW = Math.min(55, (canvas.width - padding * 2) / cols - hGap);
+    let tileW = Math.min(55, (gameW - padding * 2) / cols - hGap);
     let tileH = tileW * 1.35;
     
-    // 거치대 크기 계산 (타일이 들어갈 실제 공간 + 내부 여백)
     const rackW = cols * (tileW + hGap) + 20;
     const rackH = rows * (tileH + vGap) + 20;
 
     gameState.renderParams = {
         tileW, tileH, hGap, vGap, rows, cols,
-        rackX: (canvas.width - rackW) / 2,
-        rackY: canvas.height - rackH - 15,
+        rackX: (gameW - rackW) / 2,
+        rackY: gameH - rackH - 15,
         rackW, rackH,
         fontSize: Math.floor(tileH * 0.5),
-        depth: tileH * 0.08
+        depth: tileH * 0.08,
+        isPortrait // 현재 세로 모드인지 여부 저장
     };
 
     gameState.rackTiles.forEach(tile => {
@@ -59,39 +90,41 @@ function updateLayout() {
 
 function snapToGrid(tile, col, row) {
     const p = gameState.renderParams;
-    // 10px는 거치대 내부의 미세 여백
     tile.x = p.rackX + 10 + col * (p.tileW + p.hGap);
     tile.y = p.rackY + 10 + row * (p.tileH + p.vGap);
     tile.col = col; tile.row = row;
 }
 
+// 좌표 변환 알고리즘 (세로 모드일 때 터치 좌표를 90도 회전 계산)
+function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const rawX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const rawY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+
+    if (gameState.renderParams.isPortrait) {
+        // 세로 모드(90도 회전된 상태)에서의 좌표 보정
+        return {
+            x: rawY,
+            y: rect.width - rawX
+        };
+    }
+    return { x: rawX, y: rawY };
+}
+
+// --- 렌더링 및 드래그 함수는 Phase 4.2와 동일 ---
 function draw4DTile(tile) {
     const p = gameState.renderParams;
     const { x, y, num, color } = tile;
-    const r = 3;
-
     ctx.save();
-    if (gameState.draggingTile === tile) {
-        ctx.shadowBlur = 15; ctx.shadowOffsetY = 8; ctx.translate(-2, -2);
-    } else {
-        ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
-    }
+    if (gameState.draggingTile === tile) { ctx.shadowBlur = 15; ctx.shadowOffsetY = 8; ctx.translate(-2, -2); }
+    else { ctx.shadowBlur = 4; ctx.shadowOffsetY = 2; }
     ctx.shadowColor = "rgba(0,0,0,0.4)";
-
-    // 옆면 (두께) - 위아래 겹침을 방지하기 위해 윗면보다 약간 작게 그리거나 간격 조절
     ctx.fillStyle = "#cbd5e0";
-    ctx.beginPath(); ctx.roundRect(x, y + p.depth, p.tileW, p.tileH, r); ctx.fill();
-    
-    // 윗면
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "white";
-    ctx.beginPath(); ctx.roundRect(x, y, p.tileW, p.tileH, r); ctx.fill();
-    
-    // 숫자
-    ctx.font = `bold ${p.fontSize}px Arial`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillStyle = color;
-    ctx.fillText(num, x + p.tileW/2, y + p.tileH/2 + 1);
+    ctx.beginPath(); ctx.roundRect(x, y + p.depth, p.tileW, p.tileH, 3); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = "white";
+    ctx.beginPath(); ctx.roundRect(x, y, p.tileW, p.tileH, 3); ctx.fill();
+    ctx.font = `bold ${p.fontSize}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = color; ctx.fillText(num, x + p.tileW/2, y + p.tileH/2 + 1);
     ctx.restore();
 }
 
@@ -101,26 +134,17 @@ function drawRack() {
     const grad = ctx.createLinearGradient(p.rackX, p.rackY, p.rackX, p.rackY + p.rackH);
     grad.addColorStop(0, "#d2b48c"); grad.addColorStop(1, "#8b4513");
     ctx.fillStyle = grad;
-    // 거치대 판 자체의 입체감 추가
     ctx.shadowBlur = 10; ctx.shadowColor = "black";
     ctx.beginPath(); ctx.roundRect(p.rackX, p.rackY, p.rackW, p.rackH, 8); ctx.fill();
     ctx.restore();
 }
 
-// 이벤트 로직
-function getPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const cx = e.touches ? e.touches[0].clientX : e.clientX;
-    const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: cx - rect.left, y: cy - rect.top };
-}
-
 canvas.addEventListener('mousedown', (e) => {
     const pos = getPos(e);
+    const p = gameState.renderParams;
     for (let i = gameState.rackTiles.length - 1; i >= 0; i--) {
         const t = gameState.rackTiles[i];
-        if (pos.x >= t.x && pos.x <= t.x + gameState.renderParams.tileW && 
-            pos.y >= t.y && pos.y <= t.y + gameState.renderParams.tileH) {
+        if (pos.x >= t.x && pos.x <= t.x + p.tileW && pos.y >= t.y && pos.y <= t.y + p.tileH) {
             gameState.draggingTile = t;
             gameState.savePos = { col: t.col, row: t.row };
             gameState.offset = { x: pos.x - t.x, y: pos.y - t.y };
@@ -145,12 +169,8 @@ window.addEventListener('mouseup', () => {
     const col = Math.round((t.x - (p.rackX + 10)) / (p.tileW + p.hGap));
     const row = Math.round((t.y - (p.rackY + 10)) / (p.tileH + p.vGap));
     const isOverlap = gameState.rackTiles.find(ot => ot !== t && ot.col === col && ot.row === row);
-
-    if (col >= 0 && col < p.cols && row >= 0 && row < p.rows && !isOverlap) {
-        snapToGrid(t, col, row);
-    } else {
-        snapToGrid(t, gameState.savePos.col, gameState.savePos.row);
-    }
+    if (col >= 0 && col < p.cols && row >= 0 && row < p.rows && !isOverlap) snapToGrid(t, col, row);
+    else snapToGrid(t, gameState.savePos.col, gameState.savePos.row);
     gameState.draggingTile = null;
 });
 
