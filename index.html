@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Complete Edition</title>
+    <title>Tile Run - Sorting Pro</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Pretendard', sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
-        .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
-        button { padding: 12px 20px; font-size: 14px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .ui-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; flex-wrap: wrap; }
+        button { padding: 10px 15px; font-size: 13px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:active { transform: scale(0.95); opacity: 0.8; }
         .btn-complete { background: #27ae60; border: 2px solid #fff; }
+        .btn-sort { background: #2980b9; }
         .header { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; z-index: 10; }
         #msg { margin: 5px; font-size: 15px; color: #ffeb3b; text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-weight: bold; }
-        /* 승리 팝업 스타일 */
         #victory-overlay { 
             display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); z-index: 200; flex-direction: column; 
@@ -32,7 +32,7 @@
 
 <div class="header">
     <h3 style="margin:0; letter-spacing: 2px;">LUMICUBE PUZZLE</h3>
-    <p id="msg">가운데는 낱개, 양 끝은 뭉치 이동!</p>
+    <p id="msg">정렬 버튼을 눌러 전략을 세우세요!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -40,7 +40,8 @@
 <div class="ui-bottom">
     <button onclick="resetGame()">리셋</button>
     <button onclick="drawOneTile()" style="background:#8e44ad;">타일 뽑기</button>
-    <button onclick="sortHand()">정렬</button>
+    <button class="btn-sort" onclick="sortHand('color')">색상 정렬</button>
+    <button class="btn-sort" onclick="sortHand('number')">숫자 정렬</button>
     <button class="btn-complete" onclick="finishTurn()">조합 확정</button>
 </div>
 
@@ -112,9 +113,28 @@
         return tiles.some(t => !ignoreList.includes(t) && Math.abs(t.x - x) < 20 && Math.abs(t.y - y) < 20);
     }
 
-    function sortHand() {
+    // --- 정렬 로직 고도화 ---
+    function sortHand(type) {
         let rackTiles = tiles.filter(t => t.place === 'rack');
-        rackTiles.sort((a, b) => a.color !== b.color ? colors.indexOf(a.color) - colors.indexOf(b.color) : a.num - b.num);
+        
+        if (type === 'color') {
+            // 색상별 정렬: 색상 인덱스 우선 -> 그 다음 숫자 순
+            rackTiles.sort((a, b) => {
+                if (a.joker) return 1; if (b.joker) return -1; // 조커는 맨 뒤로
+                if (a.color !== b.color) return colors.indexOf(a.color) - colors.indexOf(b.color);
+                return a.num - b.num;
+            });
+            showMessage("색상별로 정렬했습니다.");
+        } else {
+            // 숫자별 정렬: 숫자 우선 -> 그 다음 색상 순
+            rackTiles.sort((a, b) => {
+                if (a.joker) return 1; if (b.joker) return -1;
+                if (a.num !== b.num) return a.num - b.num;
+                return colors.indexOf(a.color) - colors.indexOf(b.color);
+            });
+            showMessage("숫자별로 정렬했습니다.");
+        }
+
         const cols = Math.floor((canvas.width - 40) / RACK_GRID_X);
         rackTiles.forEach((t, i) => {
             t.x = t.saveX = 20 + (i % cols) * RACK_GRID_X;
@@ -255,7 +275,6 @@
             hasRegistered30 = true;
         }
 
-        // 확정 성공 처리
         boardTiles.forEach(t => { t.saveX = t.x; t.saveY = t.y; });
         
         if (rackTiles.length === 0) {
