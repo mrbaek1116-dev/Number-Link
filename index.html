@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Full Group Control</title>
+    <title>Tile Run - Valid Group Only</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Pretendard', sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -32,7 +32,7 @@
 
 <div class="header">
     <h3 style="margin:0; letter-spacing: 2px;">LUMICUBE PUZZLE</h3>
-    <p id="msg">거치대에서도 붙어있는 타일은 뭉치로 옮길 수 있어요!</p>
+    <p id="msg">거치대에서는 '완성된 조합'만 뭉치로 옮길 수 있습니다!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -167,28 +167,41 @@
         draggingGroup.forEach(tile => drawTileUI(ctx, tile, true));
     }
 
-    // --- 강화된 뭉치 탐색 (보드 & 거치대 모두 지원) ---
+    // --- 💡 핵심 변경 로직: 규칙에 맞는 뭉치만 허용 ---
     function getConnectedTiles(startTile, clickX) {
         const relativeX = clickX - startTile.x;
         const isCenterClick = (relativeX > TILE_W * 0.3 && relativeX < TILE_W * 0.7);
         if (isCenterClick) return [startTile];
 
-        // 그리드 간격 설정 (보드냐 거치대냐에 따라 다름)
         const gridX = (startTile.place === 'board') ? BOARD_GRID_X : RACK_GRID_X;
 
+        // 1단계: 단순 물리적 인접 타일 탐색
         let connected = [startTile];
         let queue = [startTile];
         while(queue.length > 0) {
             let curr = queue.shift();
             tiles.forEach(t => {
                 if (t.place === startTile.place && !connected.includes(t)) {
-                    // 같은 Y라인에 있고, X축으로 한 칸 거리인 타일들을 뭉치로 인식
                     if (Math.abs(t.y - curr.y) < 10 && Math.abs(Math.abs(t.x - curr.x) - gridX) < 10) {
                         connected.push(t); queue.push(t);
                     }
                 }
             });
         }
+
+        // 2단계: 거치대(Rack)일 경우만 규칙 검증
+        if (startTile.place === 'rack') {
+            // 정렬해서 검증 로직에 전달
+            connected.sort((a, b) => a.x - b.x);
+            const check = validate(connected);
+            
+            // 3장 미만이거나 규칙에 어긋나면 낱개([startTile])만 리턴
+            if (connected.length < 3 || !check.ok) {
+                return [startTile];
+            }
+        }
+
+        // 보드 위는 자유롭게 뭉치 이동 가능, 거치대는 '인증된' 뭉치만 가능
         return connected;
     }
 
@@ -201,6 +214,7 @@
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
                 startX = x; startY = y;
                 draggingGroup = getConnectedTiles(t, x);
+                
                 draggingGroup.forEach(dt => {
                     const idx = tiles.indexOf(dt);
                     tiles.push(tiles.splice(idx, 1)[0]);
@@ -255,7 +269,7 @@
         const rackTiles = tiles.filter(t => t.place === 'rack');
         if (boardTiles.length === 0) { showMessage("보드에 타일이 없습니다."); return; }
         const groups = getGroups(boardTiles);
-        if (!groups) { failTurn("모든 타일은 3장 이상 붙여야 합니다."); return; }
+        if (!groups) { failTurn("모든 타일은 3장 이상 붙어야 합니다."); return; }
         let turnScore = 0, allOk = true;
         for (let g of groups) {
             const res = validate(g);
@@ -302,29 +316,32 @@
     }
 
     function validate(group) {
-        group.sort((a, b) => a.x - b.x);
-        const reals = group.filter(t => !t.joker);
+        if (group.length === 0) return { ok: false };
+        const tempGroup = [...group].sort((a, b) => a.x - b.x);
+        const reals = tempGroup.filter(t => !t.joker);
         if (reals.length === 0) return { ok: true, score: 30 };
+
         const isSameColor = reals.every(t => t.color === reals[0].color);
         const isSameNum = reals.every(t => t.num === reals[0].num);
+
         if (isSameColor) {
             let tempNums = [];
-            let firstRealIdx = group.findIndex(t => !t.joker);
-            let startNum = group[firstRealIdx].num - firstRealIdx;
-            for(let i=0; i<group.length; i++) {
+            let firstRealIdx = tempGroup.findIndex(t => !t.joker);
+            let startNum = tempGroup[firstRealIdx].num - firstRealIdx;
+            for(let i=0; i<tempGroup.length; i++) {
                 let expected = startNum + i;
                 if (expected < 1 || expected > 13) return { ok: false };
-                if (!group[i].joker && group[i].num !== expected) return { ok: false };
+                if (!tempGroup[i].joker && tempGroup[i].num !== expected) return { ok: false };
                 tempNums.push(expected);
             }
             if(new Set(tempNums).size !== tempNums.length) return { ok: false };
             return { ok: true, score: tempNums.reduce((a,b) => a+b, 0) };
         }
         if (isSameNum) {
-            if (group.length > 4) return { ok: false };
+            if (tempGroup.length > 4) return { ok: false };
             const usedColors = new Set();
             for (let t of reals) { if (usedColors.has(t.color)) return { ok: false }; usedColors.add(t.color); }
-            return { ok: true, score: reals[0].num * group.length };
+            return { ok: true, score: reals[0].num * tempGroup.length };
         }
         return { ok: false };
     }
