@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Phase 3 (Drag & Drop)</title>
+    <title>Tile Run - Phase 3.1 (Centered Rack)</title>
     <style>
         body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
         canvas { display: block; }
@@ -18,61 +18,73 @@ const ctx = canvas.getContext('2d');
 
 let gameState = {
     rackTiles: [],
-    draggingTile: null, // 현재 잡고 있는 타일
-    offset: { x: 0, y: 0 }, // 타일 내부 클릭 지점 보정
+    draggingTile: null,
+    offset: { x: 0, y: 0 },
     renderParams: {}
 };
 
-// 1. 레이아웃 및 타일 초기화 (Phase 2 로직 포함)
+// 1. 레이아웃 업데이트 (중앙 정렬 로직 포함)
 function updateLayout() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    const padding = 10;
+    
+    const padding = 20;
     const availableW = canvas.width - (padding * 2);
-    let countPerRow = 10; 
-    let tileW = Math.min(60, availableW / countPerRow - 4);
+    
+    // 타일 수에 따라 한 줄에 들어갈 개수 결정 (최소 10개)
+    let countPerRow = Math.max(10, Math.ceil(gameState.rackTiles.length / 2));
+    let tileW = Math.min(60, (availableW / countPerRow) - 6);
     let tileH = tileW * 1.33;
+    let gap = 6;
 
     gameState.renderParams = {
-        tileW, tileH, padding,
+        tileW, tileH, padding, gap,
         fontSize: Math.floor(tileH * 0.45),
         depth: tileH * 0.08
     };
 
-    // 초기 배치 (x, y 좌표를 데이터에 저장)
     const startY = canvas.height - (tileH * 2.5);
-    gameState.rackTiles.forEach((tile, i) => {
-        if (tile === gameState.draggingTile) return; // 드래그 중인 건 건드리지 않음
-        const row = Math.floor(i / countPerRow);
-        const col = i % countPerRow;
-        tile.x = padding + col * (tileW + 4);
-        tile.y = startY + row * (tileH + 9);
-    });
+
+    // [중앙 정렬 핵심 알고리즘]
+    for (let row = 0; row < 2; row++) {
+        // 해당 줄에 있는 타일들만 필터링
+        const rowTiles = gameState.rackTiles.filter((_, i) => Math.floor(i / countPerRow) === row);
+        if (rowTiles.length === 0) continue;
+
+        // 이 줄의 타일들이 차지하는 전체 너비 계산
+        const rowWidth = rowTiles.length * tileW + (rowTiles.length - 1) * gap;
+        // 시작 X 좌표를 중앙으로 설정
+        let startX = (canvas.width - rowWidth) / 2;
+
+        rowTiles.forEach((tile, i) => {
+            if (tile === gameState.draggingTile) return;
+            // 실제 데이터 배열에서의 인덱스 찾기
+            const globalIdx = gameState.rackTiles.indexOf(tile);
+            tile.x = startX + (i % countPerRow) * (tileW + gap);
+            tile.y = startY + row * (tileH + gap + 10);
+        });
+    }
 }
 
-// 2. 4D 타일 그리기 (x, y 좌표 기반)
+// 2. 4D 타일 그리기 (이전과 동일)
 function drawTile(tile) {
     const { tileW, tileH, fontSize, depth } = gameState.renderParams;
     const { x, y, num, color } = tile;
     const r = 4;
 
     ctx.save();
-    // 드래그 중일 때 효과 (그림자 더 크게)
     if (gameState.draggingTile === tile) {
-        ctx.shadowBlur = 15;
-        ctx.shadowOffsetY = 8;
-        ctx.translate(-2, -2); // 살짝 떠오르는 느낌
+        ctx.shadowBlur = 15; ctx.shadowOffsetY = 8; ctx.translate(-2, -2);
     } else {
-        ctx.shadowBlur = 6;
-        ctx.shadowOffsetY = 3;
+        ctx.shadowBlur = 6; ctx.shadowOffsetY = 3;
     }
     ctx.shadowColor = "rgba(0,0,0,0.5)";
-
-    // 몸체와 숫자 (Phase 2와 동일)
     ctx.fillStyle = "#d9d9d9";
     ctx.beginPath(); ctx.roundRect(x, y + depth, tileW, tileH, r); ctx.fill();
     ctx.shadowColor = "transparent";
-    ctx.fillStyle = "#ffffff";
+    const grad = ctx.createLinearGradient(x, y, x, y + tileH);
+    grad.addColorStop(0, "#ffffff"); grad.addColorStop(1, "#f2f2f2");
+    ctx.fillStyle = grad;
     ctx.beginPath(); ctx.roundRect(x, y, tileW, tileH, r); ctx.fill();
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.font = `bold ${fontSize}px Arial`; ctx.fillStyle = color;
@@ -80,7 +92,7 @@ function drawTile(tile) {
     ctx.restore();
 }
 
-// 3. 이벤트 리스너 (마우스 & 터치 통합)
+// 3. 포인터 이벤트 (이전과 동일)
 function getPointerPos(e) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -91,16 +103,12 @@ function getPointerPos(e) {
 function onStart(e) {
     const pos = getPointerPos(e);
     const { tileW, tileH } = gameState.renderParams;
-
-    // 역순으로 검사 (위에 그려진 타일부터 잡히게)
     for (let i = gameState.rackTiles.length - 1; i >= 0; i--) {
         const t = gameState.rackTiles[i];
         if (pos.x >= t.x && pos.x <= t.x + tileW && pos.y >= t.y && pos.y <= t.y + tileH) {
             gameState.draggingTile = t;
             gameState.offset.x = pos.x - t.x;
             gameState.offset.y = pos.y - t.y;
-            
-            // 잡은 타일을 배열 맨 뒤로 보내서 가장 위에 그려지게 함
             gameState.rackTiles.splice(i, 1);
             gameState.rackTiles.push(t);
             break;
@@ -118,7 +126,7 @@ function onMove(e) {
 function onEnd() {
     if (!gameState.draggingTile) return;
     gameState.draggingTile = null;
-    updateLayout(); // 놓았을 때 다시 정렬 (임시)
+    updateLayout(); 
 }
 
 canvas.addEventListener('mousedown', onStart);
@@ -134,7 +142,7 @@ function render() {
     requestAnimationFrame(render);
 }
 
-// 초기 데이터
+// 테스트 데이터 (14장)
 const colors = ['#e53e3e', '#3182ce', '#ed8936', '#2d3748'];
 for(let i=1; i<=14; i++) {
     gameState.rackTiles.push({ num: i % 13 || 13, color: colors[i % 4], x: 0, y: 0 });
