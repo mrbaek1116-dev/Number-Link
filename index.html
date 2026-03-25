@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Phase 1</title>
+    <title>Tile Run - Octagon Pro</title>
     <style>
-        /* 모바일 최적화: 스크롤 및 선택 방지 */
-        body { margin: 0; padding: 0; background: #1a1e2a; overflow: hidden; touch-action: none; user-select: none; }
+        body { margin: 0; background: #1a1e2a; overflow: hidden; touch-action: none; }
         canvas { display: block; }
     </style>
 </head>
@@ -17,57 +16,56 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// 1. 반응형 설정: 화면 크기가 변해도 꽉 차게
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    draw(); // 크기 변할 때마다 다시 그리기
+    render();
 }
 
-// 2. 타일 그리기 함수 (전문가 수준의 디테일)
-function drawTile(x, y, num, color) {
-    const w = 45;
-    const h = 60;
-    const radius = 6;
-
-    ctx.save();
-    // 타일 그림자
-    ctx.shadowBlur = 4;
-    ctx.shadowOffsetY = 2;
-    ctx.shadowColor = "rgba(0,0,0,0.3)";
-
-    // 타일 몸체
-    ctx.fillStyle = "white";
+function drawOctagon(ctx, x, y, w, h, b) {
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, radius);
-    ctx.fill();
+    ctx.moveTo(x + b, y);
+    ctx.lineTo(x + w - b, y);
+    ctx.lineTo(x + w, y + b);
+    ctx.lineTo(x + w, y + h - b);
+    ctx.lineTo(x + w - b, y + h);
+    ctx.lineTo(x + b, y + h);
+    ctx.lineTo(x, y + h - b);
+    ctx.lineTo(x, y + b);
+    ctx.closePath();
+}
 
-    // 테두리
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = "#cbd5e0";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // 숫자 텍스트
+function drawProTile(x, y, num, color) {
+    const w = 45; const h = 60; const b = 8; const t = 4;
+    ctx.save();
+    // Shadow
+    ctx.shadowColor = "rgba(0,0,0,0.5)";
+    ctx.shadowBlur = 6; ctx.shadowOffsetY = 3;
+    // Side
+    ctx.fillStyle = "#cbd5e0";
+    drawOctagon(ctx, x, y + t, w, h, b); ctx.fill();
+    // Top
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = "#ffffff";
+    drawOctagon(ctx, x, y, w, h, b); ctx.fill();
+    // Text
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "bold 26px Arial";
     ctx.fillStyle = color;
-    ctx.font = "bold 24px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(num, x + w / 2, y + h / 2 + 2);
+    ctx.fillText(num, x + w/2, y + h/2 + 1);
     ctx.restore();
 }
 
-function draw() {
+function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 테스트용 타일 몇 개
-    drawTile(50, 50, "7", "#e53e3e");  // 빨강
-    drawTile(105, 50, "8", "#ed8936"); // 주황
-    drawTile(160, 50, "9", "#3182ce"); // 파랑
+    // 테스트: 연속된 타일 배치
+    drawProTile(50, 100, "10", "#e53e3e");
+    drawProTile(100, 100, "11", "#e53e3e");
+    drawProTile(150, 100, "12", "#e53e3e");
 }
 
 window.addEventListener('resize', resize);
-resize(); // 초기 실행
+resize();
 </script>
 </body>
 </html>
