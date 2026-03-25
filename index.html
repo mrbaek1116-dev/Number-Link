@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Smooth Grouping</title>
+    <title>Tile Run - Fixed Group Move</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Pretendard', sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -32,7 +32,7 @@
 
 <div class="header">
     <h3 style="margin:0; letter-spacing: 2px;">LUMICUBE PUZZLE</h3>
-    <p id="msg">가운데는 낱개, 양 끝은 뭉치 이동!</p>
+    <p id="msg">뭉치를 옮겨도 대열이 흐트러지지 않습니다!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -167,10 +167,8 @@
         draggingGroup.forEach(tile => drawTileUI(ctx, tile, true));
     }
 
-    // --- 뭉치 인식 로직 최적화 ---
     function getConnectedTiles(startTile, clickX) {
         const relativeX = clickX - startTile.x;
-        // 타일의 중앙 40% 정도를 누르면 무조건 낱개 이동
         const isCenterClick = (relativeX > TILE_W * 0.3 && relativeX < TILE_W * 0.7);
         if (isCenterClick) return [startTile];
 
@@ -178,12 +176,10 @@
         let connected = [startTile];
         let queue = [startTile];
 
-        // 1. 물리적으로 인접한 타일 모두 찾기
         while(queue.length > 0) {
             let curr = queue.shift();
             tiles.forEach(t => {
                 if (t.place === startTile.place && !connected.includes(t)) {
-                    // Y축 오차 15px, X축 오차 gridX + 15px까지 넉넉하게 잡음
                     if (Math.abs(t.y - curr.y) < 15 && Math.abs(Math.abs(t.x - curr.x) - gridX) < 15) {
                         connected.push(t); queue.push(t);
                     }
@@ -191,17 +187,13 @@
             });
         }
 
-        // 2. 거치대(Rack)에서만 규칙 검증 (보드 위는 무조건 뭉치 이동 가능)
         if (startTile.place === 'rack') {
             connected.sort((a, b) => a.x - b.x);
             const check = validate(connected);
-            // 조합이 맞지 않거나 3장 미만이면 낱개로 전환
-            if (connected.length < 3 || !check.ok) {
-                return [startTile];
-            }
+            if (connected.length < 3 || !check.ok) return [startTile];
         }
 
-        return connected;
+        return connected.sort((a, b) => a.x - b.x); // 찢어짐 방지를 위해 정렬하여 반환
     }
 
     function onStart(e) {
@@ -232,26 +224,44 @@
         render();
     }
 
+    // --- 💡 핵심 변경: 뭉치 찢어짐 방지 스냅 로직 ---
     function onEnd() {
         if (draggingGroup.length === 0) return;
+        
         let canPlace = true;
         let snapPositions = [];
-        for (let t of draggingGroup) {
-            let tx, ty, place;
-            if (t.y < rackY - 20) {
-                tx = Math.round((t.x - 10) / BOARD_GRID_X) * BOARD_GRID_X + 10;
-                ty = Math.round((t.y - BOARD_TOP) / BOARD_GRID_Y) * BOARD_GRID_Y + BOARD_TOP;
-                ty = Math.max(BOARD_TOP, ty);
-                place = 'board';
-            } else {
-                let row = Math.max(0, Math.min(Math.round((t.y - rackY) / RACK_GRID_Y), RACK_ROWS-1));
-                tx = Math.round((t.x - 20) / RACK_GRID_X) * RACK_GRID_X + 20;
-                ty = rackY + row * RACK_GRID_Y;
-                place = 'rack';
+
+        // 1. 기준점 잡기: 뭉치의 첫 번째 타일(가장 왼쪽)을 기준으로 스냅 좌표 계산
+        let master = draggingGroup[0];
+        let masterSnapX, masterSnapY, place;
+
+        if (master.y < rackY - 20) {
+            masterSnapX = Math.round((master.x - 10) / BOARD_GRID_X) * BOARD_GRID_X + 10;
+            masterSnapY = Math.round((master.y - BOARD_TOP) / BOARD_GRID_Y) * BOARD_GRID_Y + BOARD_TOP;
+            masterSnapY = Math.max(BOARD_TOP, masterSnapY);
+            place = 'board';
+        } else {
+            let row = Math.max(0, Math.min(Math.round((master.y - rackY) / RACK_GRID_Y), RACK_ROWS-1));
+            masterSnapX = Math.round((master.x - 20) / RACK_GRID_X) * RACK_GRID_X + 20;
+            masterSnapY = rackY + row * RACK_GRID_Y;
+            place = 'rack';
+        }
+
+        const gridX = (place === 'board') ? BOARD_GRID_X : RACK_GRID_X;
+
+        // 2. 마스터 기준 나머지 타일들 강제 일렬 배치 확인
+        for (let i = 0; i < draggingGroup.length; i++) {
+            let tx = masterSnapX + (i * gridX);
+            let ty = masterSnapY;
+
+            // 보드 밖으로 나가는지 또는 겹치는지 체크
+            if (tx > canvas.width - TILE_W || isOccupied(tx, ty, draggingGroup)) {
+                canPlace = false; break;
             }
-            if (isOccupied(tx, ty, draggingGroup)) { canPlace = false; break; }
             snapPositions.push({ x: tx, y: ty, place: place });
         }
+
+        // 3. 적용
         draggingGroup.forEach((t, i) => {
             if (canPlace) {
                 t.x = snapPositions[i].x; t.y = snapPositions[i].y; t.place = snapPositions[i].place;
@@ -259,6 +269,7 @@
                 t.x = t.saveX; t.y = t.saveY;
             }
         });
+
         draggingGroup = []; render();
     }
 
@@ -267,7 +278,7 @@
         const rackTiles = tiles.filter(t => t.place === 'rack');
         if (boardTiles.length === 0) { showMessage("보드에 타일이 없습니다."); return; }
         const groups = getGroups(boardTiles);
-        if (!groups) { failTurn("모든 타일은 3장 이상 붙여야 합니다."); return; }
+        if (!groups) { failTurn("모든 타일은 3장 이상 붙어야 합니다."); return; }
         let turnScore = 0, allOk = true;
         for (let g of groups) {
             const res = validate(g);
