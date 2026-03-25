@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tile Run - Smart Manipulation</title>
+    <title>Tile Run - Complete Edition</title>
     <style>
         body { margin: 0; background: #1a1e2a; touch-action: none; font-family: 'Pretendard', sans-serif; overflow: hidden; color: white; }
         canvas { display: block; }
@@ -13,13 +13,26 @@
         .btn-complete { background: #27ae60; border: 2px solid #fff; }
         .header { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; z-index: 10; }
         #msg { margin: 5px; font-size: 15px; color: #ffeb3b; text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-weight: bold; }
+        /* 승리 팝업 스타일 */
+        #victory-overlay { 
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85); z-index: 200; flex-direction: column; 
+            justify-content: center; align-items: center; text-align: center;
+        }
+        #victory-overlay h1 { color: #f1c40f; font-size: 3rem; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
+<div id="victory-overlay">
+    <h1>🎉 RUMIKUB! 🎉</h1>
+    <p>모든 타일을 내려놓았습니다!</p>
+    <button onclick="location.reload()" style="background:#e74c3c; margin-top:20px; font-size:18px;">새 게임 시작</button>
+</div>
+
 <div class="header">
     <h3 style="margin:0; letter-spacing: 2px;">LUMICUBE PUZZLE</h3>
-    <p id="msg">가운데를 잡으면 낱개, 양 끝을 잡으면 뭉치 이동!</p>
+    <p id="msg">가운데는 낱개, 양 끝은 뭉치 이동!</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -35,12 +48,14 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const msgArea = document.getElementById('msg');
+    const victoryOverlay = document.getElementById('victory-overlay');
     
     let tiles = [];
     let pool = [];
     let draggingGroup = []; 
     let startX, startY;
     let hasRegistered30 = false;
+    let gameActive = true;
 
     const TILE_W = 46, TILE_H = 62;
     const RACK_GRID_X = 54, RACK_GRID_Y = 80;
@@ -59,7 +74,8 @@
     window.addEventListener('resize', resize);
 
     function resetGame() {
-        tiles = []; pool = []; hasRegistered30 = false;
+        tiles = []; pool = []; hasRegistered30 = false; gameActive = true;
+        victoryOverlay.style.display = "none";
         for (let s = 0; s < 2; s++) {
             colors.forEach(c => { for (let n = 1; n <= 13; n++) pool.push({ num: n, color: c, joker: null }); });
         }
@@ -138,21 +154,12 @@
         draggingGroup.forEach(tile => drawTileUI(ctx, tile, true));
     }
 
-    // --- 핵심 로직: 낱개 vs 뭉치 판단 ---
-
     function getConnectedTiles(startTile, clickX) {
-        // 거치대에서는 무조건 낱개 이동
         if (startTile.place === 'rack') return [startTile];
-
-        // 클릭 위치가 타일의 중앙 1/3 (약 15px ~ 31px 사이) 이면 낱개 이동
         const relativeX = clickX - startTile.x;
         const isCenterClick = (relativeX > TILE_W * 0.3 && relativeX < TILE_W * 0.7);
+        if (isCenterClick) return [startTile];
 
-        if (isCenterClick) {
-            return [startTile]; // 낱개 선택
-        }
-
-        // 사이드 클릭 시 줄 전체 탐색 (뭉치 이동)
         let connected = [startTile];
         let queue = [startTile];
         while(queue.length > 0) {
@@ -160,8 +167,7 @@
             tiles.forEach(t => {
                 if (t.place === 'board' && !connected.includes(t)) {
                     if (Math.abs(t.y - curr.y) < 10 && Math.abs(Math.abs(t.x - curr.x) - BOARD_GRID_X) < 10) {
-                        connected.push(t);
-                        queue.push(t);
+                        connected.push(t); queue.push(t);
                     }
                 }
             });
@@ -170,24 +176,20 @@
     }
 
     function onStart(e) {
+        if(!gameActive) return;
         const ev = e.touches ? e.touches[0] : e;
         const x = ev.clientX, y = ev.clientY;
-        
         for (let i = tiles.length - 1; i >= 0; i--) {
             const t = tiles[i];
             if (x >= t.x && x <= t.x + TILE_W && y >= t.y && y <= t.y + TILE_H) {
                 startX = x; startY = y;
                 draggingGroup = getConnectedTiles(t, x);
-                
                 draggingGroup.forEach(dt => {
                     const idx = tiles.indexOf(dt);
                     tiles.push(tiles.splice(idx, 1)[0]);
                     dt.initX = dt.x; dt.initY = dt.y;
                 });
-                
-                showMessage(draggingGroup.length > 1 ? "뭉치 이동 중..." : "낱개 이동 중...");
-                render();
-                break;
+                render(); break;
             }
         }
     }
@@ -205,7 +207,6 @@
         if (draggingGroup.length === 0) return;
         let canPlace = true;
         let snapPositions = [];
-
         for (let t of draggingGroup) {
             let tx, ty, place;
             if (t.y < rackY - 20) {
@@ -222,7 +223,6 @@
             if (isOccupied(tx, ty, draggingGroup)) { canPlace = false; break; }
             snapPositions.push({ x: tx, y: ty, place: place });
         }
-
         draggingGroup.forEach((t, i) => {
             if (canPlace) {
                 t.x = snapPositions[i].x; t.y = snapPositions[i].y; t.place = snapPositions[i].place;
@@ -230,29 +230,41 @@
                 t.x = t.saveX; t.y = t.saveY;
             }
         });
-
-        draggingGroup = [];
-        render();
+        draggingGroup = []; render();
     }
 
     function finishTurn() {
         const boardTiles = tiles.filter(t => t.place === 'board');
+        const rackTiles = tiles.filter(t => t.place === 'rack');
+
         if (boardTiles.length === 0) { showMessage("보드에 타일이 없습니다."); return; }
         const groups = getGroups(boardTiles);
         if (!groups) { failTurn("모든 타일은 3장 이상 붙어야 합니다."); return; }
+
         let turnScore = 0, allOk = true;
         for (let g of groups) {
             const res = validate(g);
             if (!res.ok) { allOk = false; break; }
             turnScore += res.score;
         }
+
         if (!allOk) { failTurn("잘못된 조합입니다."); return; }
+
         if (!hasRegistered30) {
             if (turnScore < 30) { failTurn(`첫 등록 30점 미달 (${turnScore}점)`); return; }
             hasRegistered30 = true;
         }
+
+        // 확정 성공 처리
         boardTiles.forEach(t => { t.saveX = t.x; t.saveY = t.y; });
-        showMessage("✅ 조합 확정!"); render();
+        
+        if (rackTiles.length === 0) {
+            gameActive = false;
+            victoryOverlay.style.display = "flex";
+        } else {
+            showMessage("✅ 확정 성공! 남은 타일: " + rackTiles.length);
+            render();
+        }
     }
 
     function failTurn(reason) {
